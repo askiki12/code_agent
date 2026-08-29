@@ -30,7 +30,7 @@
 ## 3. 存储格式与位置
 
 - 根目录：`<workdir>/.code_agent/sessions/`。
-- 文件名：`<session_id>.jsonl`；`session_id = strftime("code_agent-%Y%m%d-%H%M%S")`（可读、可排序）。
+- 文件名：`<session_id>.jsonl`；`session_id = strftime("code_agent-%Y%m%d-%H%M%S%f")`（微秒精度，可读、可排序、同秒不碰撞）。
 - 首行 meta（JSON）：`{"type":"meta","id":..., "title":..., "created_at":..., "updated_at":...}`。
 - 其后每行一条 OpenAI 兼容消息 dict（与 `Conversation._messages` 结构一致，含 `role`/`content`/`tool_calls`/`tool_call_id`/`name`），`json.dumps(..., ensure_ascii=False)`。
 - 标题：首条 `user` 任务内容去换行后前 40 字符。

@@ -13,8 +13,8 @@
 ## Global Constraints
 
 - Python 3.11+；零新依赖（标准库 json/os/datetime）。
-- 存储：`<workdir>/.code_agent/sessions/<session_id>.jsonl`；`session_id = strftime("code_agent-%Y%m%d-%H%M%S")`。
-- 文件首行 meta：`{"type":"meta","id","title","created_at","updated_at","message_count"}`（`datetime.now().isoformat(timespec="seconds")`）。
+- 存储：`<workdir>/.code_agent/sessions/<session_id>.jsonl`；`session_id = strftime("code_agent-%Y%m%d-%H%M%S%f")`（微秒精度防同秒碰撞）。
+- 文件首行 meta：`{"type":"meta","id","title","created_at","updated_at","message_count"}`（`datetime.now().isoformat(timespec="microseconds")`）。
 - 保存为全量原子写（tmp + `os.replace`）；标题 = 首条 user 消息去换行前 40 字符。
 - `save` 保留原 `created_at`；`load` 文件缺失抛 `KeyError`，坏行跳过不中断。
 - 恢复时重注入当前 `SYSTEM_PROMPT`（移除旧 system）。
@@ -210,7 +210,7 @@ class SessionStore:
     def create(self, title: str) -> str:
         os.makedirs(self.root, exist_ok=True)
         session_id = _make_session_id()
-        now = datetime.now().isoformat(timespec="seconds")
+        now = datetime.now().isoformat(timespec="microseconds")
         meta = _meta_dict(session_id, title, now, now, 0)
         self._write(self._path(self.root, session_id), [meta])
         return session_id
@@ -218,7 +218,7 @@ class SessionStore:
     def save(self, session_id: str, messages: list[dict], title: str | None = None) -> None:
         path = self._path(self.root, session_id)
         existing = self._read_meta(path) if os.path.isfile(path) else None
-        now = datetime.now().isoformat(timespec="seconds")
+        now = datetime.now().isoformat(timespec="microseconds")
         created_at = existing["created_at"] if existing else now
         if existing is None:
             os.makedirs(self.root, exist_ok=True)
