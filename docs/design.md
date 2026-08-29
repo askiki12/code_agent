@@ -63,11 +63,12 @@ v0.1.0 已实现范围：
 - [x] 上下文管理：消息序列维护、token 预算、超限裁剪、超长 tool 结果处理
 - [x] 错误处理：工具错误回传、API 重试（指数退避）、命令超时、解析异常恢复、LLM 错误优雅停止
 - [x] CLI：`--prompt` 一次性任务 + `--interactive` 对话模式，流式输出
+- [x] 搜索工具 glob/grep（纯标准库自实现，grep 带基础 gitignore）
 - [x] 测试：工具/解析/上下文单元测试 + mock 模型集成测试 + 真实 API 冒烟测试（54 用例全绿）
 
 暂不实现（留作后续扩展，遵循 YAGNI）：
 
-- 工具组 glob/grep、并行工具调用、会话 checkpoint 恢复、复杂 token 计费策略、Web 界面。
+- 并行工具调用、会话 checkpoint 恢复、复杂 token 计费策略、Web 界面。
 
 ## 7. 关键机制
 
@@ -86,4 +87,5 @@ v0.1.0 已实现范围：
 4. [x] 实现 `context.py`：消息维护 + token 预算 + 裁剪
 5. [x] 实现 `agent.py`：循环、终止条件、错误恢复
 6. [x] 测试与冒烟：单元测试 → mock 集成测试 → 真实 API（已完成，54 用例 + 两次真实冒烟）
-7. [ ] 演示准备：README.txt + 演示任务 + 视频脚本（待办）
+7. [x] 迭代增强：新增 glob/grep 搜索工具（ADR-011，设计见 docs/superpowers/specs/2026-08-29-glob-grep-design.md）
+8. [ ] 演示准备：README.txt + 演示任务 + 视频脚本（待办）

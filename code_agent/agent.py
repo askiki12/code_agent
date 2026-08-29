@@ -16,6 +16,8 @@ Available tools:
 - edit_file: replace an exact substring in a file (must match uniquely)
 - list_dir: list directory contents
 - run_command: run a shell command (has a timeout)
+- glob: find files by glob pattern (e.g. **/*.py)
+- grep: search file contents with a regex
 
 Rules:
 1. Plan each step. Prefer small, verifiable changes.

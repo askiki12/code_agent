@@ -186,7 +186,7 @@ TOOL_SCHEMAS = [
     ),
     _schema(
         "grep",
-        "Search file contents with a regex. Skips .git and protected paths.",
+        "Search file contents with a regex. Skips .git, protected and gitignored paths.",
         {
             "pattern": {"type": "string", "description": "Regex to search"},
             "path": {"type": "string", "description": "File or directory (defaults to workdir)"},

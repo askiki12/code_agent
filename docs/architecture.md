@@ -9,7 +9,7 @@
 | `cli.py` | 命令行入口，解析参数，加载 `.env`，启动会话，打印流式输出 | agent, llm |
 | `agent.py` | 会话循环：组织往返、解析输出、执行工具、判定终止、错误恢复 | llm, tools, context |
 | `context.py` | 维护消息序列、token 估算、预算裁剪、tool 结果处理 | 无（纯逻辑） |
-| `tools.py` | 工具 schema 定义 + 本地执行器 + 结果格式化 | 无（纯逻辑，标准库） |
+| `tools.py` | 工具 schema 定义 + 本地执行器 + 结果格式化（含 glob/grep 搜索与 gitignore 过滤） | 无（纯逻辑，标准库） |
 | `llm.py` | OpenAI 兼容 API 调用（流式）、响应/工具调用解析、重试 | requests |
 
 ## 2. 数据流
