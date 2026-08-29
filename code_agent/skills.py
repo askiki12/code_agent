@@ -67,6 +67,9 @@ class SkillRegistry:
             print(f"[skills] warning: invalid SKILL.md skipped: {path}", file=sys.stderr)
             return None
         sname, desc, _ = parsed
+        if sname != name:
+            print(f"[skills] warning: SKILL.md name '{sname}' != directory '{name}', skipped: {path}", file=sys.stderr)
+            return None
         return Skill(name=sname, description=desc, path=path)
 
     def scan(self) -> list[Skill]:
@@ -79,6 +82,8 @@ class SkillRegistry:
         return sorted(by_name.values(), key=lambda s: s.name)
 
     def load(self, name: str) -> str | None:
+        if not name or "/" in name or "\\" in name or ".." in name:
+            return None
         for base in (self._project_dir, self._user_dir):
             path = os.path.join(base, name, "SKILL.md")
             if os.path.isfile(path):

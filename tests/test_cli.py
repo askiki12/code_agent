@@ -183,6 +183,7 @@ def test_main_policy_passed_and_rules_applied(monkeypatch, tmp_path):
 
 def test_main_passes_skill_registry_when_skills_present(monkeypatch, tmp_path):
     monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
+    monkeypatch.setattr("code_agent.skills._default_user_dir", lambda: str(tmp_path / "user-skills"))
     proj = str(tmp_path)
     skill_dir = os.path.join(proj, ".code_agent", "skills", "greeting")
     os.makedirs(skill_dir, exist_ok=True)
@@ -207,6 +208,7 @@ def test_main_passes_skill_registry_when_skills_present(monkeypatch, tmp_path):
 
 def test_main_no_skills_passes_none(monkeypatch, tmp_path):
     monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
+    monkeypatch.setattr("code_agent.skills._default_user_dir", lambda: str(tmp_path / "user-skills"))
     captured = {}
 
     class _CaptureSession:

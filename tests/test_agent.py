@@ -314,3 +314,17 @@ def test_agent_no_skills_no_skill_tool(workdir):
         t is None or not any(tc["function"]["name"] == "use_skill" for tc in t)
         for t in llm.tools_calls
     )
+
+
+def test_agent_use_skill_non_dict_arguments(workdir, tmp_path):
+    from code_agent.skills import SkillRegistry
+    reg = SkillRegistry(str(tmp_path / "proj"), str(tmp_path / "user"))
+    skill_call = LLMResponse(
+        content="", tool_calls=[ToolCall(id="c1", name="use_skill", arguments="oops")]
+    )
+    llm = FakeLLM([skill_call, LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5, skills=reg)
+    result = session.run_task("do skill")
+    assert result.finished
+    tool_msgs = [m for m in session.conversation.messages if m["role"] == "tool"]
+    assert tool_msgs and "skill arguments must be an object" in tool_msgs[0]["content"]

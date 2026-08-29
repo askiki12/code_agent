@@ -62,3 +62,25 @@ def test_load_missing_returns_none(tmp_path):
 def test_scan_missing_dirs_empty(tmp_path):
     reg = SkillRegistry(str(tmp_path / "nope-proj"), str(tmp_path / "nope-user"))
     assert reg.scan() == []
+
+
+def test_scan_skips_name_mismatch(tmp_path, capsys):
+    proj = str(tmp_path / "proj")
+    d = os.path.join(proj, ".code_agent", "skills", "foo")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write("---\nname: bar\ndescription: mismatch\n---\nbody\n")
+    reg = SkillRegistry(proj, str(tmp_path / "user"))
+    assert reg.scan() == []
+    assert "name 'bar' != directory 'foo'" in capsys.readouterr().err
+
+
+def test_load_rejects_path_traversal(tmp_path):
+    proj = str(tmp_path / "proj")
+    d = os.path.join(proj, ".code_agent", "evil")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write("---\nname: evil\ndescription: evil\n---\nbody\n")
+    reg = SkillRegistry(proj, str(tmp_path / "user"))
+    assert reg.load("../evil") is None
+    assert reg.load("a/b") is None

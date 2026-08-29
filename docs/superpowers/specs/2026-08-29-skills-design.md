@@ -89,6 +89,7 @@ class SkillRegistry:
   - `content = self.skills.load(name)`；None → `ToolResult(ok=False, output=f"skill not found: {name}")`
   - 命中 → `ToolResult(ok=True, output=content)`
 - 无 skills 时：`use_skill` 不注册，`_run_tool` 不分支（走 execute → unknown tool）。
+- CLI：`cli.py` 构造 `SkillRegistry(workdir)`，仅当 `scan()` 非空时以 `skills=...` 传入 AgentSession（否则 None，保持兼容）。
 
 ## 6. use_skill 工具定义
 

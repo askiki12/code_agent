@@ -205,6 +205,8 @@ class AgentSession:
             return ToolResult(ok=False, output=f"tool crash: {type(e).__name__}: {e}")
 
     def _use_skill(self, arguments: dict) -> ToolResult:
+        if not isinstance(arguments, dict):
+            return ToolResult(ok=False, output="skill arguments must be an object")
         name = arguments.get("name", "")
         if not name:
             return ToolResult(ok=False, output="skill name is required")
