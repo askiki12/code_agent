@@ -147,10 +147,8 @@ def main(argv: list[str] | None = None) -> int:
         last = workspace.last_session_id
         if last and any(s["id"] == last for s in sessions):
             line += f" | last: {last}"
-            print(line)
             print(f"Tip: /resume {last} 续接上次会话")
-        else:
-            print(line)
+        print(line)
     print("Interactive mode. Type 'exit', 'quit' or '/exit' to leave. Commands: /new /list /resume <id>")
     while True:
         try:

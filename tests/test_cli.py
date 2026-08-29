@@ -134,6 +134,22 @@ def test_main_interactive_shows_workspace(monkeypatch, capsys, tmp_path):
     assert rc == 0
 
 
+def test_main_interactive_no_tip_when_last_deleted(monkeypatch, capsys, tmp_path):
+    from code_agent.session import SessionStore
+    from code_agent.workspace import Workspace
+    monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
+    store = SessionStore(str(tmp_path / ".code_agent" / "sessions"))
+    Workspace(str(tmp_path)).touch_session("code_agent-gone")
+    inputs = iter(["/exit"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("code_agent.cli.AgentSession", _FakeSession)
+    rc = main(["--interactive", "--workdir", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert "Workspace:" in out
+    assert "Tip: /resume" not in out
+    assert rc == 0
+
+
 def test_main_oneshot_does_not_show_workspace(monkeypatch, capsys, tmp_path):
     monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
     monkeypatch.setattr("code_agent.cli.AgentSession", _FakeSession)

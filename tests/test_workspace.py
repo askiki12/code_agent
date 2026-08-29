@@ -23,6 +23,11 @@ def test_id_is_stable_hash(tmp_path):
     assert len(w1.id) == 12
 
 
+def test_path_is_realpath(tmp_path):
+    w = Workspace(str(tmp_path))
+    assert w.data["path"] == os.path.realpath(str(tmp_path))
+
+
 def test_touch_session_updates_last_and_updated_at(tmp_path):
     w = Workspace(str(tmp_path))
     before = w.data["updated_at"]
