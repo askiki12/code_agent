@@ -58,17 +58,21 @@ uv run python -m code_agent --interactive
 - `--max-iterations <n>`：最大循环轮次（默认 20）。
 - `--max-context-tokens <n>`：上下文 token 预算（默认 90000）。
 - `--debug`：输出详细日志。
+- `--list-sessions`：列出 `<workdir>/.code_agent/sessions/` 下的会话（id/标题/消息数/更新时间）。
+- `--resume <id>`：恢复指定会话（可与 `--prompt`/`--interactive` 组合）。
+- 交互模式斜杠命令：`/new`（新建）、`/list`（列出）、`/resume <id>`（恢复）、`/exit`（退出）。
 
 ## 3. 测试
 
 - 框架：`pytest`（经 `uv run`）。
-- 目录：`tests/`（当前 82 个用例，全部离线，无需 API key）。
+- 目录：`tests/`（当前 104 个用例，全部离线，无需 API key）。
   - `test_smoke.py`：包可导入、版本号。
   - `test_tools.py`：七个工具的本地执行用例（含 glob/grep）。
   - `test_llm_parse.py`：tool_calls 响应解析（含异常格式）。
   - `test_context.py`：消息维护、token 估算、裁剪后结构一致性。
   - `test_agent.py`：用 mock 模型跑通完整循环（含终止条件与错误恢复，不含真实 API）。
   - `test_cli.py`：`.env` 加载、缺 key 报错、一次性任务入口。
+  - `test_session.py`：SessionStore 创建/保存/加载/列表/坏文件容错。
 - 运行全部测试：
 
 ```bash

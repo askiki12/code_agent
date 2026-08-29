@@ -10,6 +10,7 @@
 | `agent.py` | 会话循环：组织往返、解析输出、执行工具、判定终止、错误恢复 | llm, tools, context |
 | `context.py` | 维护消息序列、token 估算、预算裁剪、tool 结果处理 | 无（纯逻辑） |
 | `tools.py` | 工具 schema 定义 + 本地执行器 + 结果格式化（含 glob/grep 搜索与 gitignore 过滤） | 无（纯逻辑，标准库） |
+| `session.py` | 会话持久化：SessionStore（JSONL 存储/列表/恢复） | 无（纯逻辑，标准库） |
 | `llm.py` | OpenAI 兼容 API 调用（流式）、响应/工具调用解析、重试 | requests |
 
 ## 2. 数据流
@@ -17,6 +18,7 @@
 ```
 cli（用户任务）
   │  main() 先 _load_dotenv() 再构造 AgentSession
+  │  （cli 通过 _make_store(workdir) 构造 SessionStore，AgentSession 每轮 run_task 结束自动保存会话）
   ▼
 agent.AgentSession.run_task(task)
   │  通过 conversation.add_user(task) 加入消息
@@ -51,6 +53,10 @@ loop:                                             │
 - `execute(name, args, workdir) -> ToolResult`。
 - `ToolResult`：`{ok: bool, output: str, truncated: bool, exit_code?: int}` + `as_message()`。
 - 所有输出为纯文本，便于回填给模型；超长自动截断（默认 8000 字符）；受保护路径（`.env*` 除 `.env.example`、`.git`）禁读禁写；写操作限定工作目录内。
+
+### session.py
+- `SessionStore(root)` — root 为 `<workdir>/.code_agent/sessions`。
+- `list_sessions() -> list[dict]`（按 updated_at 倒序，含 message_count）/ `create(title) -> session_id` / `save(session_id, messages, title=None)`（全量原子写）/ `load(session_id) -> (meta, messages)`（缺失抛 KeyError，坏行跳过）。
 
 ### context.py
 - `Conversation` 类：内部维护消息列表（system/user/assistant/tool）。

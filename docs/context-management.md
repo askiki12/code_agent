@@ -47,3 +47,10 @@
 
 - 中间轮次的语义摘要（用模型压缩历史）——显著增强长任务能力，作为候选增强。
 - 精确 token 计费统计（当前仅做裁剪预算，不对外计费）。
+
+## 8. 会话持久化
+
+- 对话可通过 `Conversation.to_jsonl()` / `from_jsonl()` 序列化到 JSONL（逐行一条消息）。
+- 存储由 `session.SessionStore` 管理：`<workdir>/.code_agent/sessions/<id>.jsonl`，首行 meta。
+- `AgentSession` 每次 `run_task` 结束自动保存；`--resume <id>` / 交互 `/resume` 恢复会话（重新注入当前 system prompt）。
+- `.code_agent` 为受保护路径，工具层不可读写。
