@@ -319,8 +319,85 @@ def _clip_line(line: str) -> str:
     return line[:MAX_GREP_LINE_CHARS] + "..."
 
 
-def _walk_searchable(root: str, workdir: str, include: str | None):
-    """Yield (abs_path, rel_path) of searchable files under root. No symlink following."""
+def _parse_gitignore_lines(text: str, base_dir: str) -> list[dict]:
+    rules: list[dict] = []
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if not line or line.startswith("#"):
+            continue
+        negation = False
+        if line.startswith("!"):
+            negation = True
+            line = line[1:].lstrip()
+        dir_only = line.endswith("/")
+        if dir_only:
+            line = line[:-1]
+        anchored = line.startswith("/")
+        if anchored:
+            line = line[1:]
+        if not line:
+            continue
+        rules.append({
+            "pattern": line,
+            "negation": negation,
+            "dir_only": dir_only,
+            "anchored": anchored,
+            "base_dir": base_dir,
+        })
+    return rules
+
+
+def _load_gitignore_rules(dir_path: str) -> list[dict]:
+    gi = os.path.join(dir_path, ".gitignore")
+    if not os.path.isfile(gi):
+        return []
+    try:
+        with open(gi, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return []
+    return _parse_gitignore_lines(text, dir_path)
+
+
+def _gitignore_ignored(rules: list[dict], abs_path: str, is_dir: bool) -> bool:
+    ignored = False
+    for r in rules:
+        if r["dir_only"] and not is_dir:
+            continue
+        try:
+            rel = os.path.relpath(abs_path, r["base_dir"])
+        except ValueError:
+            continue
+        if r["anchored"] or "/" in r["pattern"]:
+            match = fnmatch.fnmatch(rel, r["pattern"])
+        else:
+            match = fnmatch.fnmatch(rel, r["pattern"]) or fnmatch.fnmatch(
+                os.path.basename(rel), r["pattern"]
+            )
+        if match:
+            ignored = not r["negation"]
+    return ignored
+
+
+def _initial_gitignore_stack(root: str, workdir: str) -> list[dict]:
+    rules: list[dict] = []
+    if _inside_workdir(root, workdir):
+        rel = os.path.relpath(root, workdir)
+        dirs = [workdir]
+        if rel != ".":
+            cur = workdir
+            for part in rel.split(os.sep):
+                cur = os.path.join(cur, part)
+                dirs.append(cur)
+        for d in dirs:
+            rules.extend(_load_gitignore_rules(d))
+    else:
+        rules.extend(_load_gitignore_rules(root))
+    return rules
+
+
+def _walk_searchable(root: str, workdir: str, rules: list[dict], include: str | None):
+    """Yield (abs_path, rel_path) of searchable files under root, honoring gitignore."""
     if not os.path.isdir(root):
         return
     try:
@@ -333,8 +410,12 @@ def _walk_searchable(root: str, workdir: str, include: str | None):
         if _is_protected_path(rel):
             continue
         if entry.is_dir(follow_symlinks=False):
-            yield from _walk_searchable(abs_path, workdir, include)
+            if _gitignore_ignored(rules, abs_path, True):
+                continue
+            yield from _walk_searchable(abs_path, workdir, rules + _load_gitignore_rules(abs_path), include)
         elif entry.is_file(follow_symlinks=False):
+            if _gitignore_ignored(rules, abs_path, False):
+                continue
             if include and not fnmatch.fnmatch(entry.name, include):
                 continue
             yield abs_path, rel
@@ -407,7 +488,8 @@ def _grep(args: dict, workdir: str) -> ToolResult:
             total += 1
 
     if is_dir:
-        for abs_path, rel in _walk_searchable(path, workdir, include):
+        rules = _initial_gitignore_stack(path, workdir)
+        for abs_path, rel in _walk_searchable(path, workdir, rules, include):
             process(abs_path, rel)
             if total >= MAX_SEARCH_RESULTS:
                 truncated = True

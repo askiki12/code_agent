@@ -275,3 +275,45 @@ def test_grep_result_cap_truncated(workdir):
     r = execute("grep", {"pattern": "hit"}, workdir)
     assert r.ok and r.truncated
     assert "search truncated" in r.output
+
+
+def test_parse_gitignore_lines():
+    from code_agent.tools import _parse_gitignore_lines
+    rules = _parse_gitignore_lines("# c\n\n*.log\n/build\n!keep.txt\ndir/\n", "/wd")
+    assert len(rules) == 4
+    assert rules[0]["pattern"] == "*.log" and not rules[0]["negation"]
+    assert rules[1]["anchored"] is True and rules[1]["pattern"] == "build"
+    assert rules[2]["negation"] is True and rules[2]["pattern"] == "keep.txt"
+    assert rules[3]["dir_only"] is True and rules[3]["pattern"] == "dir"
+
+
+def test_grep_gitignore_skips(workdir):
+    _write(os.path.join(workdir, ".gitignore"), "ignored.txt\n")
+    _write(os.path.join(workdir, "ignored.txt"), "secret\n")
+    _write(os.path.join(workdir, "kept.txt"), "secret\n")
+    r = execute("grep", {"pattern": "secret", "output_mode": "files_with_matches"}, workdir)
+    assert r.ok and r.output == "kept.txt"
+
+
+def test_grep_gitignore_comment_and_dir(workdir):
+    _write(os.path.join(workdir, ".gitignore"), "# comment\n\nbuild/\n")
+    _write(os.path.join(workdir, "build", "out.txt"), "secret\n")
+    _write(os.path.join(workdir, "src", "ok.py"), "secret\n")
+    r = execute("grep", {"pattern": "secret", "output_mode": "files_with_matches"}, workdir)
+    assert r.ok and r.output == "src/ok.py"
+
+
+def test_grep_gitignore_negation(workdir):
+    _write(os.path.join(workdir, ".gitignore"), "*.log\n!keep.log\n")
+    _write(os.path.join(workdir, "a.log"), "secret\n")
+    _write(os.path.join(workdir, "keep.log"), "secret\n")
+    r = execute("grep", {"pattern": "secret", "output_mode": "files_with_matches"}, workdir)
+    assert r.ok and r.output == "keep.log"
+
+
+def test_grep_gitignore_anchored(workdir):
+    _write(os.path.join(workdir, ".gitignore"), "/root.txt\n")
+    _write(os.path.join(workdir, "root.txt"), "secret\n")
+    _write(os.path.join(workdir, "sub", "root.txt"), "secret\n")
+    r = execute("grep", {"pattern": "secret", "output_mode": "files_with_matches"}, workdir)
+    assert r.ok and r.output == "sub/root.txt"
