@@ -48,32 +48,45 @@ uv run python -m code_agent --interactive
 | `--model` / `--base-url` / `--api-key` | 覆盖环境变量 / `.env` | env → 内置默认 |
 | `--max-iterations <n>` | 最大循环轮次 | 20 |
 | `--max-context-tokens <n>` | 上下文 token 预算 | 90000 |
+| `--list-sessions` | 列出本工作区会话并退出 | — |
+| `--resume <id>` | 恢复指定会话（可与 `--prompt`/`--interactive` 组合） | — |
+| `--allow` / `--deny` / `--ask <tool:pattern>` | 权限规则（可重复），如 `--deny "run_command:pytest *"` | — |
 | `--debug` | 输出调试日志 | off |
+
+交互模式内置斜杠命令：`/new`（新建会话）、`/list`（列出）、`/resume <id>`（恢复）、`/exit`（退出）。
 
 ## 测试与验证
 
 ```bash
-uv run pytest tests/ -v      # 全量测试（当前 54 个，全部离线，无需 API key）
+uv run pytest tests/ -v      # 全量测试（当前 151 个，全部离线，无需 API key）
 ```
 
 ## 功能特性
 
-- 5 个自实现本地工具：`read_file` / `write_file` / `edit_file`（精确替换 + 原子写）/ `list_dir` / `run_command`
+- **7 个自实现本地工具**：`read_file` / `write_file` / `edit_file`（精确替换 + 原子写）/ `list_dir` / `run_command` / `glob` / `grep`（三种输出模式 + 基础 gitignore）
+- **会话持久化与多会话管理**：对话存 `<workdir>/.code_agent/sessions/`，`--list-sessions` / `--resume` 跨重启续接，交互斜杠命令 `/new` `/list` `/resume`
+- **工作区一等公民**：`workspace.json` 元数据（稳定 id），交互启动展示项目概况与上次会话续接提示
+- **权限模型**：`--allow` / `--deny` / `--ask` 三态规则 + 只读命令白名单 + doom_loop 重复检测；ask 交互询问 y/N，一次性任务降级拒绝
+- **skill 机制**：项目级 + 用户级 SKILL.md 技能库，`use_skill` 按需加载（如 `~/.code_agent/skills/`）
 - 流式输出；上下文 token 预算与成组裁剪（不会产生孤儿 tool 消息）
 - 错误恢复：工具错误回传模型继续、API 指数退避重试、命令超时、LLM 错误优雅停止（不崩溃）
-- 安全：受保护路径（`.env` / `.git`）禁读禁写；命令超时与输出截断；凭据仅走环境变量 / `.env`
+- 安全：受保护路径（`.env` / `.git` / `.code_agent`）禁读禁写；命令超时与输出截断；凭据仅走环境变量 / `.env`
 
 ## 项目结构
 
 ```
 code_agent/
 ├── code_agent/            # 主包
-│   ├── cli.py             # 命令行入口（含 .env 自动加载）
-│   ├── agent.py           # 会话循环、终止条件、错误恢复
-│   ├── context.py         # 消息管理、token 预算、裁剪
+│   ├── cli.py             # 命令行入口（含 .env 自动加载、权限参数、会话/工作区接线）
+│   ├── agent.py           # 会话循环、终止条件、错误恢复、权限检查、skill 注入
+│   ├── context.py         # 消息管理、token 预算、裁剪、序列化
 │   ├── tools.py           # 工具 schema + 本地执行器
-│   └── llm.py             # OpenAI 兼容流式客户端 + tool_calls 解析
-├── tests/                 # 54 个离线测试（pytest）
+│   ├── llm.py             # OpenAI 兼容流式客户端 + tool_calls 解析
+│   ├── session.py         # 会话持久化（SessionStore，JSONL）
+│   ├── workspace.py       # 工作区元数据（Workspace）
+│   ├── permissions.py     # 权限模型（Policy：三态/白名单/doom_loop）
+│   └── skills.py          # 技能库（SkillRegistry）
+├── tests/                 # 151 个离线测试（pytest）
 ├── docs/                  # 设计/架构/工具/上下文/开发文档 —— 接手者必读
 ├── pyproject.toml         # 依赖与元数据声明
 └── uv.lock                # 环境版本锁定
