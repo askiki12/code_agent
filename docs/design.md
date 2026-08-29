@@ -66,6 +66,7 @@ v0.1.0 已实现范围：
 - [x] 搜索工具 glob/grep（纯标准库自实现，grep 带基础 gitignore）
 - [x] 测试：工具/解析/上下文单元测试 + mock 模型集成测试 + 真实 API 冒烟测试（105 用例全绿）
 - [x] 会话持久化与多会话管理（JSONL 存储，--list-sessions/--resume，交互斜杠命令 /new /list /resume）
+- [x] 工作区一等公民（workspace.json 元数据，交互启动展示概况与上次会话续接提示）
 
 暂不实现（留作后续扩展，遵循 YAGNI）：
 
@@ -91,3 +92,4 @@ v0.1.0 已实现范围：
 7. [x] 迭代增强：新增 glob/grep 搜索工具（ADR-011，设计见 docs/superpowers/specs/2026-08-29-glob-grep-design.md）
 8. [ ] 演示准备：README.txt + 演示任务 + 视频脚本（待办）
 9. [x] 迭代增强：会话持久化 + 多会话管理（ADR-012，设计见 docs/superpowers/specs/2026-08-29-session-persistence-design.md）
+10. [x] 迭代增强：工作区一等公民（ADR-013，设计见 docs/superpowers/specs/2026-08-29-workspace-design.md）

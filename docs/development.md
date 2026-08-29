@@ -49,6 +49,9 @@ uv run python -m code_agent --prompt "把这个目录里所有测试跑通"
 uv run python -m code_agent --interactive
 ```
 
+- 交互模式启动会展示工作区概况：`Workspace: <name> (<id>) | sessions: <n> | last: <last_session_id>`，并提示 `Tip: /resume <last_session_id>` 续接上次会话。
+- 工作区元数据存于 `<workdir>/.code_agent/workspace.json`（自动维护，勿手动编辑）。
+
 全部参数（`uv run python -m code_agent --help` 查看）：
 
 - `--prompt <task>`：一次性任务。
@@ -65,7 +68,7 @@ uv run python -m code_agent --interactive
 ## 3. 测试
 
 - 框架：`pytest`（经 `uv run`）。
-- 目录：`tests/`（当前 105 个用例，全部离线，无需 API key）。
+- 目录：`tests/`（当前 115 个用例，全部离线，无需 API key）。
   - `test_smoke.py`：包可导入、版本号。
   - `test_tools.py`：七个工具的本地执行用例（含 glob/grep）。
   - `test_llm_parse.py`：tool_calls 响应解析（含异常格式）。
@@ -73,6 +76,7 @@ uv run python -m code_agent --interactive
   - `test_agent.py`：用 mock 模型跑通完整循环（含终止条件与错误恢复，不含真实 API）。
   - `test_cli.py`：`.env` 加载、缺 key 报错、一次性任务入口。
   - `test_session.py`：SessionStore 创建/保存/加载/列表/坏文件容错。
+  - `test_workspace.py`：工作区初始化/幂等/损坏容错/touch_session。
 - 运行全部测试：
 
 ```bash

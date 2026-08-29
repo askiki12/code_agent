@@ -11,6 +11,7 @@
 | `context.py` | 维护消息序列、token 估算、预算裁剪、tool 结果处理 | 无（纯逻辑） |
 | `tools.py` | 工具 schema 定义 + 本地执行器 + 结果格式化（含 glob/grep 搜索与 gitignore 过滤） | 无（纯逻辑，标准库） |
 | `session.py` | 会话持久化：SessionStore（JSONL 存储/列表/恢复） | 无（纯逻辑，标准库） |
+| `workspace.py` | 工作区身份与元数据：Workspace（workspace.json 幂等读写/触摸/展示） | 无（纯逻辑，标准库） |
 | `llm.py` | OpenAI 兼容 API 调用（流式）、响应/工具调用解析、重试 | requests |
 
 ## 2. 数据流
@@ -57,6 +58,11 @@ loop:                                             │
 ### session.py
 - `SessionStore(root)` — root 为 `<workdir>/.code_agent/sessions`。
 - `list_sessions() -> list[dict]`（按 updated_at 倒序，含 message_count）/ `create(title) -> session_id` / `save(session_id, messages, title=None)`（全量原子写）/ `load(session_id) -> (meta, messages)`（缺失抛 KeyError，坏行跳过）。
+
+### workspace.py
+- `Workspace(workdir)` — 读取/初始化 `<workdir>/.code_agent/workspace.json`（id = sha1(realpath)[:12]，name = basename）。
+- `touch_session(session_id)`：更新 last_session_id + updated_at（原子写）。
+- `display() -> str`："Workspace: <name> (<id>)"；实时统计由 CLI 拼接。
 
 ### context.py
 - `Conversation` 类：内部维护消息列表（system/user/assistant/tool）。
