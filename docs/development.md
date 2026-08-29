@@ -2,10 +2,26 @@
 
 > 描述如何运行、测试、验证和演示本项目，随开发逐步完善。
 
-## 1. 环境准备
+## 1. 环境准备（使用 uv 管理）
 
-- Python 3.11+。
-- 安装依赖：`pip install -e .`（依赖声明于 `pyproject.toml`）。
+本项目使用 **uv** 管理实验环境，保证环境隔离与可复现：
+
+```bash
+# 1. 安装 uv（若未安装）
+curl -LsSf https://astral.sh/uv/install.sh | sh        # 或 pip install uv
+
+# 2. 在仓库根目录创建并同步环境（生成 .venv/ 与 uv.lock）
+uv sync
+
+# 3. 在环境中运行（uv run 会自动使用 .venv）
+uv run python -m code_agent --help
+```
+
+- 环境位置：`code_agent/.venv/`（已 gitignore）。
+- 可复现性：`uv.lock` 锁定精确版本，已入库；任何机器 `uv sync` 得到一致环境。
+- 依赖声明：运行依赖在 `pyproject.toml` 的 `[project]`，测试依赖在 `[dependency-groups].dev`（pytest）。
+- 新增依赖后：改 `pyproject.toml` → `uv sync`（自动更新 `uv.lock`）。
+- 不要求系统 Python 预装 `requests`/`pytest`；环境由 uv 完全隔离。
 - 配置 API：设置环境变量（示例，勿提交真实 key）：
 
 ```bash
@@ -19,13 +35,13 @@ export CODE_AGENT_MODEL="gpt-4o-mini"   # 或 deepseek-chat 等
 一次性任务：
 
 ```bash
-python -m code_agent --prompt "把这个目录里所有测试跑通"
+uv run python -m code_agent --prompt "把这个目录里所有测试跑通"
 ```
 
 交互式对话：
 
 ```bash
-python -m code_agent --interactive
+uv run python -m code_agent --interactive
 ```
 
 常用参数（待实现）：
@@ -46,13 +62,13 @@ python -m code_agent --interactive
 - 运行全部测试：
 
 ```bash
-python -m pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 ## 4. 验证清单（每阶段合并前）
 
-- [ ] `python -m pytest tests/ -v` 全部通过
-- [ ] `python -m code_agent --help` 正常输出
+- [ ] `uv run pytest tests/ -v` 全部通过
+- [ ] `uv run python -m code_agent --help` 正常输出
 - [ ] 一次真实 API 冒烟任务（如修改一个测试文件并跑通）
 - [ ] 无真实凭据被写入任何提交的文件（用 `git grep -i "sk-"` 复核）
 
@@ -79,3 +95,4 @@ python -m pytest tests/ -v
 | 长任务上下文溢出 | 预算裁剪策略（见 `context-management.md`） |
 | 命令工具卡死 | 超时机制 + 无 TTY |
 | 误写真实 API key 进仓库 | 环境变量唯一来源 + 提交前 grep 复核 |
+| 环境不可复现 | uv + `uv.lock` 锁定版本；`uv sync` 一键重建 |

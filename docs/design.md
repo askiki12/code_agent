@@ -24,6 +24,7 @@
 | 模型接入 | OpenAI 兼容接口（/chat/completions） | 一个 Provider 抽象，切换模型只改环境变量 |
 | HTTP | requests 或 httpx | 依赖尽量少 |
 | 配置 | 环境变量（`.env` 不入库） | 满足凭据要求 |
+| 环境管理 | uv（`.venv/` + `uv.lock`） | 环境隔离、可复现、`uv sync` 一键重建 |
 
 ## 4. 总体架构（方案 B：分层模块）
 

@@ -5,15 +5,21 @@
 ## 运行
 
 ```bash
+# 环境（uv，隔离且可复现）
+uv sync
+
 export CODE_AGENT_BASE_URL="https://api.example.com/v1"
 export CODE_AGENT_API_KEY="sk-..."   # 仅环境变量，切勿入库
 export CODE_AGENT_MODEL="gpt-4o-mini"
 
 # 一次性任务
-python -m code_agent --prompt "把 tests/test_tools.py 里的测试全部跑通"
+uv run python -m code_agent --prompt "把 tests/test_tools.py 里的测试全部跑通"
 
 # 交互式
-python -m code_agent --interactive
+uv run python -m code_agent --interactive
+
+# 测试
+uv run pytest tests/ -v
 ```
 
 ## 功能
