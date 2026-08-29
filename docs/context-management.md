@@ -31,7 +31,7 @@
   1. **始终保留**：`system` + 最近 N 轮完整往返（确保最新决策上下文完整）；
   2. 裁剪中间轮次：从最老的非 system 消息开始丢弃（成对丢弃 assistant+tool，保持结构完整）；
   3. 若仍超限，对最老的剩余消息做截断（内容超长裁剪），并可在 system 中注入"上下文已压缩"提示。
-- 裁剪前后做一致性校验：不允许出现悬空的 `tool` 消息（无对应 assistant tool_call）。
+- 裁剪以“assistant tool_call + 其后 tool 消息”为组整体进行，从结构上杜绝悬空的 `tool` 消息（无对应 assistant tool_call）；`Conversation.is_valid()` 可用于校验与测试。
 
 ## 5. 工具结果处理
 

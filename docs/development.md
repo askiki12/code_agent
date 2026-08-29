@@ -5,7 +5,7 @@
 ## 1. 环境准备
 
 - Python 3.11+。
-- 安装依赖：`pip install -r requirements.txt`（待建立）。
+- 安装依赖：`pip install -e .`（依赖声明于 `pyproject.toml`）。
 - 配置 API：设置环境变量（示例，勿提交真实 key）：
 
 ```bash
