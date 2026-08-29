@@ -38,19 +38,17 @@ class SessionStore:
     def _read_meta(self, path: str) -> dict | None:
         try:
             with open(path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if isinstance(obj, dict) and obj.get("type") == "meta":
-                        return obj
-                    break
+                first = f.readline().strip()
         except OSError:
             return None
+        if not first:
+            return None
+        try:
+            obj = json.loads(first)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(obj, dict) and obj.get("type") == "meta":
+            return obj
         return None
 
     def list_sessions(self) -> list[dict]:
@@ -81,7 +79,7 @@ class SessionStore:
         created_at = existing["created_at"] if existing else now
         if existing is None:
             os.makedirs(self.root, exist_ok=True)
-        resolved_title = title if title is not None else (existing.get("title") or "" if existing else "")
+        resolved_title = title if title is not None else (existing.get("title") or "") if existing else ""
         meta = _meta_dict(session_id, resolved_title, created_at, now, len(messages))
         self._write(path, [meta] + list(messages))
 
@@ -110,7 +108,7 @@ class SessionStore:
             raise KeyError(session_id)
         return meta, messages
 
-    def _write(self, path: str, objects: list) -> None:
+    def _write(self, path: str, objects: list[dict]) -> None:
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             for obj in objects:

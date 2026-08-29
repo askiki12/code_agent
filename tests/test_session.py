@@ -64,6 +64,19 @@ def test_load_skips_corrupt_lines(tmp_path):
     assert msgs == [{"role": "user", "content": "ok"}]
 
 
+def test_load_skips_non_dict_lines(tmp_path):
+    store = SessionStore(str(tmp_path))
+    sid = "code_agent-test-nd"
+    os.makedirs(str(tmp_path), exist_ok=True)
+    with open(os.path.join(str(tmp_path), f"{sid}.jsonl"), "w", encoding="utf-8") as f:
+        f.write('{"type":"meta","id":"' + sid + '"}\n')
+        f.write('["not","a","dict"]\n')
+        f.write('{"role":"user","content":"ok"}\n')
+    meta, msgs = store.load(sid)
+    assert meta["id"] == sid
+    assert msgs == [{"role": "user", "content": "ok"}]
+
+
 def test_save_keeps_created_at(tmp_path):
     store = SessionStore(str(tmp_path))
     sid = store.create("t")
