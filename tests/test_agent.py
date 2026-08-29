@@ -196,3 +196,30 @@ def test_agent_load_session_switches_conversation(workdir, tmp_path):
     contents = [m.get("content") for m in session.conversation.messages]
     assert "other history" in contents
     assert session.conversation.is_valid()
+
+
+def test_agent_with_workspace_touches_session(workdir, tmp_path):
+    from code_agent.session import SessionStore
+    from code_agent.workspace import Workspace
+    Path(workdir, "a.txt").write_text("hello", encoding="utf-8")
+    store = SessionStore(str(tmp_path / ".code_agent" / "sessions"))
+    workspace = Workspace(str(tmp_path))
+    llm = FakeLLM([
+        _read_call("c1", "a.txt"),
+        LLMResponse(content="done", tool_calls=[]),
+    ])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5, store=store, workspace=workspace)
+    result = session.run_task("read the file")
+    assert result.finished
+    assert workspace.last_session_id == session.session_id
+
+
+def test_agent_without_workspace_unchanged(workdir):
+    Path(workdir, "a.txt").write_text("hello", encoding="utf-8")
+    llm = FakeLLM([
+        _read_call("c1", "a.txt"),
+        LLMResponse(content="done", tool_calls=[]),
+    ])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5)
+    result = session.run_task("read the file")
+    assert result.finished and result.final_text == "done"

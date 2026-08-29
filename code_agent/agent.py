@@ -10,6 +10,7 @@ from code_agent.context import Conversation
 from code_agent.llm import LLMError
 from code_agent.session import SessionStore, _make_title
 from code_agent.tools import TOOL_SCHEMAS, ToolResult, execute
+from code_agent.workspace import Workspace
 
 SYSTEM_PROMPT = """You are a coding agent. You work inside a local workspace and complete software tasks autonomously.
 
@@ -54,6 +55,7 @@ class AgentSession:
         store: SessionStore | None = None,
         session_id: str | None = None,
         resume: bool = False,
+        workspace: Workspace | None = None,
     ) -> None:
         self.workdir = workdir
         self.llm = llm
@@ -61,6 +63,7 @@ class AgentSession:
         self.max_context_tokens = max_context_tokens
         self.debug = debug
         self.store = store
+        self.workspace = workspace
         self.session_id = session_id
         if resume:
             if session_id is None:
@@ -133,6 +136,8 @@ class AgentSession:
                     if self.session_id is None:
                         self.session_id = self.store.create(title)
                     self.store.save(self.session_id, self.conversation.messages, title=title)
+                    if self.workspace is not None:
+                        self.workspace.touch_session(self.session_id)
                 except OSError as e:
                     print(f"[agent] warning: failed to save session: {e}", file=sys.stderr)
 
