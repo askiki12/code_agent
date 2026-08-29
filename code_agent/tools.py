@@ -141,11 +141,125 @@ TOOL_SCHEMAS = [
         {"path": {"type": "string", "description": "Directory path (defaults to workdir)"}},
         [],
     ),
+    _schema(
+        "write_file",
+        "Create or overwrite a file (must be inside the workdir).",
+        {
+            "path": {"type": "string", "description": "File path (absolute or relative to workdir)"},
+            "content": {"type": "string", "description": "Full file content"},
+        },
+        ["path", "content"],
+    ),
+    _schema(
+        "edit_file",
+        "Replace an exact substring in a file (must match uniquely unless replace_all).",
+        {
+            "path": {"type": "string", "description": "File path"},
+            "old_string": {"type": "string", "description": "Exact text to replace"},
+            "new_string": {"type": "string", "description": "Replacement text"},
+            "replace_all": {"type": "boolean", "description": "Replace every occurrence"},
+        },
+        ["path", "old_string", "new_string"],
+    ),
+    _schema(
+        "run_command",
+        "Run a shell command in the workdir (timeout and output limits apply).",
+        {
+            "command": {"type": "string", "description": "Shell command"},
+            "timeout": {"type": "number", "description": f"Timeout in seconds (default {DEFAULT_COMMAND_TIMEOUT})"},
+        },
+        ["command"],
+    ),
 ]
+
+def _write_file(args: dict, workdir: str) -> ToolResult:
+    path = _resolve(args.get("path", ""), workdir)
+    if _is_protected_path(path):
+        return ToolResult(ok=False, output=f"refusing to write protected path: {path}")
+    if not _inside_workdir(path, workdir):
+        return ToolResult(ok=False, output=f"refusing to write outside workdir: {path}")
+    content = args.get("content", "")
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp, path)
+    except OSError as e:
+        return ToolResult(ok=False, output=f"write failed: {e}")
+    return ToolResult(ok=True, output=f"wrote {len(content)} chars to {path}")
+
+
+def _edit_file(args: dict, workdir: str) -> ToolResult:
+    path = _resolve(args.get("path", ""), workdir)
+    if _is_protected_path(path):
+        return ToolResult(ok=False, output=f"refusing to edit protected path: {path}")
+    if not _inside_workdir(path, workdir):
+        return ToolResult(ok=False, output=f"refusing to edit outside workdir: {path}")
+    old = args.get("old_string", "")
+    new = args.get("new_string", "")
+    if old == "":
+        return ToolResult(ok=False, output="old_string must not be empty")
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+    except OSError as e:
+        return ToolResult(ok=False, output=f"read failed: {e}")
+    count = content.count(old)
+    if count == 0:
+        return ToolResult(ok=False, output=f"old_string not found in {path}")
+    if count > 1 and not args.get("replace_all"):
+        return ToolResult(
+            ok=False,
+            output=f"old_string matches {count} times in {path}; provide more context or set replace_all=true",
+        )
+    content = content.replace(old, new)
+    try:
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp, path)
+    except OSError as e:
+        return ToolResult(ok=False, output=f"write failed: {e}")
+    return ToolResult(ok=True, output=f"applied {count} replacement(s) in {path}")
+
+
+def _run_command(args: dict, workdir: str) -> ToolResult:
+    command = args.get("command", "")
+    if not command.strip():
+        return ToolResult(ok=False, output="command must not be empty")
+    timeout = float(args.get("timeout", DEFAULT_COMMAND_TIMEOUT))
+    try:
+        proc = subprocess.run(
+            command,
+            shell=True,
+            cwd=workdir,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return ToolResult(ok=False, output=f"command timed out after {timeout}s")
+    except OSError as e:
+        return ToolResult(ok=False, output=f"failed to run command: {e}")
+    out = proc.stdout
+    if proc.stderr:
+        out += "\n[stderr]\n" + proc.stderr
+    out, truncated = truncate(out)
+    return ToolResult(
+        ok=proc.returncode == 0,
+        output=out,
+        truncated=truncated,
+        exit_code=proc.returncode,
+    )
+
 
 _HANDLERS = {
     "read_file": _read_file,
+    "write_file": _write_file,
+    "edit_file": _edit_file,
     "list_dir": _list_dir,
+    "run_command": _run_command,
 }
 
 
