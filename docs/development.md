@@ -49,21 +49,26 @@ uv run python -m code_agent --prompt "把这个目录里所有测试跑通"
 uv run python -m code_agent --interactive
 ```
 
-常用参数（待实现）：
+全部参数（`uv run python -m code_agent --help` 查看）：
 
+- `--prompt <task>`：一次性任务。
+- `-i` / `--interactive`：交互式模式（同一会话保持上下文）。
 - `--workdir <dir>`：agent 工作目录（默认当前目录）。
-- `--model <model>` / `--base-url <url>`：覆盖环境变量。
-- `--max-iterations <n>`：最大循环轮次。
+- `--model <model>` / `--base-url <url>` / `--api-key <key>`：覆盖环境变量 / `.env`。
+- `--max-iterations <n>`：最大循环轮次（默认 20）。
+- `--max-context-tokens <n>`：上下文 token 预算（默认 90000）。
 - `--debug`：输出详细日志。
 
 ## 3. 测试
 
-- 框架：`pytest`。
-- 目录：`tests/`。
-  - `test_tools.py`：五个工具的本地执行用例（含错误/截断/路径边界）。
+- 框架：`pytest`（经 `uv run`）。
+- 目录：`tests/`（当前 54 个用例，全部离线，无需 API key）。
+  - `test_smoke.py`：包可导入、版本号。
+  - `test_tools.py`：五个工具的本地执行用例（含错误/截断/路径边界/受保护路径）。
   - `test_llm_parse.py`：tool_calls 响应解析（含异常格式）。
   - `test_context.py`：消息维护、token 估算、裁剪后结构一致性。
-  - `test_agent.py`：用**录制 mock 模型**跑通完整循环（不含真实 API）。
+  - `test_agent.py`：用 mock 模型跑通完整循环（含终止条件与错误恢复，不含真实 API）。
+  - `test_cli.py`：`.env` 加载、缺 key 报错、一次性任务入口。
 - 运行全部测试：
 
 ```bash

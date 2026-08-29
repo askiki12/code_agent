@@ -1,6 +1,8 @@
 # code_agent 实现计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **状态：已全部完成（2026-08-29）。** 见 `git log`（Initial → Task 1~8 → 评审修复 → uv 环境 → .env 加载）。以下清单均已勾选，作为历史记录保留。
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 用 Python 从零实现一个可运行的编程智能体：通过 OpenAI 兼容接口调用模型，自主调用 5 个本地工具（read_file / write_file / edit_file / list_dir / run_command）完成任务，支持一次性与交互式 CLI。
 
@@ -32,7 +34,7 @@
 **Interfaces:**
 - Produces: 包 `code_agent` 可导入（`__version__`）；`python -m code_agent` 可运行；`pytest` 可在仓库根收集用例。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `code_agent/tests/test_smoke.py`:
 ```python
@@ -43,12 +45,12 @@ def test_package_importable():
     assert code_agent.__version__ == "0.1.0"
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `python -m pytest tests/test_smoke.py -v`
 Expected: FAIL（`ModuleNotFoundError: No module named 'code_agent'`）
 
-- [ ] **Step 3: 创建脚手架文件**
+- [x] **Step 3: 创建脚手架文件**
 
 `code_agent/pyproject.toml`:
 ```toml
@@ -105,14 +107,14 @@ def main(argv=None) -> int:
     return 0
 ```
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `python -m pytest tests/ -v`
 Expected: PASS（1 个用例）
 Run: `python -m code_agent`
 Expected: `code_agent: implementation in progress`
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add pyproject.toml .gitignore code_agent/ tests/ docs/development-plan.md
@@ -134,7 +136,7 @@ git commit -m "chore: 脚手架 + 实现计划（Task 1/8）"
   - `class Conversation`：`add_system(text)` / `add_user(text)` / `add_assistant(content, tool_calls=None)` / `add_tool(tool_call_id, name, output)` / `messages`（属性，返回拷贝）/ `is_valid() -> bool`（无悬空 tool 消息）/ `build_messages(max_tokens: int) -> list[dict]`（保留 system+最近消息，成组裁剪，不产生孤儿 tool）
   - `add_assistant` 的 `tool_calls` 参数接受任意含 `.id` / `.name` / `.arguments` 的对象列表（鸭子类型，Task 5 的 `ToolCall` 即满足）。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `code_agent/tests/test_context.py`:
 ```python
@@ -218,12 +220,12 @@ def test_build_messages_grouping_no_orphan_tool():
             assert msgs[i - 1]["role"] == "assistant"
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `python -m pytest tests/test_context.py -v`
 Expected: FAIL（`ModuleNotFoundError: No module named 'code_agent.context'`）
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 `code_agent/code_agent/context.py`:
 ```python
@@ -353,12 +355,12 @@ class Conversation:
         return out
 ```
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `python -m pytest tests/test_context.py -v`
 Expected: PASS（全部用例）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add code_agent/context.py tests/test_context.py
@@ -382,7 +384,7 @@ git commit -m "feat: context.py 消息管理/token 估算/裁剪（Task 2/8）"
   - `execute(name: str, args: dict, workdir: str) -> ToolResult`（含未知工具/异常兜底）
   - 内部：`_is_protected_path(path)`（`.env*`（除 `.env.example`）、`.git` 任意路径段命中即保护）、`_inside_workdir(path, workdir)`、`_resolve(path, workdir)`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `code_agent/tests/test_tools.py`:
 ```python
@@ -468,12 +470,12 @@ def workdir(tmp_path):
     return str(tmp_path)
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `python -m pytest tests/test_tools.py -v`
 Expected: FAIL（`ModuleNotFoundError: No module named 'code_agent.tools'`）
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 `code_agent/code_agent/tools.py`:
 ```python
@@ -640,12 +642,12 @@ def execute(name: str, args: dict, workdir: str) -> ToolResult:
 
 （Task 4 将向 `TOOL_SCHEMAS` 与 `_HANDLERS` 追加 write_file / edit_file / run_command。）
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `python -m pytest tests/test_tools.py -v`
 Expected: PASS（全部用例）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add code_agent/tools.py tests/test_tools.py tests/conftest.py
@@ -664,7 +666,7 @@ git commit -m "feat: tools.py 基础设施与只读工具 read_file/list_dir（T
 - Consumes: Task 3 的 `ToolResult` / `truncate` / `_is_protected_path` / `_inside_workdir` / `_resolve` / `TOOL_SCHEMAS` / `_HANDLERS` / `_schema`。
 - Produces: `TOOL_SCHEMAS` 与 `_HANDLERS` 扩展至 5 个工具。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 追加到 `code_agent/tests/test_tools.py`:
 ```python
@@ -742,12 +744,12 @@ def test_run_command_output_truncated(workdir):
     assert r.ok and r.truncated
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `python -m pytest tests/test_tools.py -v`
 Expected: FAIL（write_file / edit_file / run_command 为 unknown tool）
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 在 `code_agent/code_agent/tools.py` 的 `_HANDLERS` 定义之前追加以下实现，并把三个 schema 追加到 `TOOL_SCHEMAS`：
 
@@ -878,12 +880,12 @@ _HANDLERS = {
 }
 ```
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `python -m pytest tests/test_tools.py -v`
 Expected: PASS（全部用例，含 Task 3 的 5 工具 schema 名称断言）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add code_agent/tools.py tests/test_tools.py
@@ -909,7 +911,7 @@ git commit -m "feat: tools.py 写工具与命令执行 write_file/edit_file/run_
   - `iter_sse_lines(response) -> Iterator[str]`（剥离 `data:` 前缀、遇 `[DONE]` 结束）
   - `class LLMClient`：`__init__(*, base_url, api_key, model, timeout=300.0, max_retries=3, debug=False)`；`chat(messages, tools=None, on_delta=None) -> LLMResponse`（流式 SSE，429/5xx/网络错误指数退避重试）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `code_agent/tests/test_llm_parse.py`:
 ```python
@@ -990,12 +992,12 @@ def test_iter_sse_lines_stops_at_done():
     assert list(iter_sse_lines(resp)) == ['{"x": 1}']
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `python -m pytest tests/test_llm_parse.py -v`
 Expected: FAIL（`ModuleNotFoundError: No module named 'code_agent.llm'`）
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 `code_agent/code_agent/llm.py`:
 ```python
@@ -1166,12 +1168,12 @@ class LLMClient:
         return acc.result()
 ```
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `python -m pytest tests/test_llm_parse.py -v`
 Expected: PASS（全部用例）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add code_agent/llm.py tests/test_llm_parse.py
@@ -1194,7 +1196,7 @@ git commit -m "feat: llm.py OpenAI 兼容流式客户端与 tool_calls 解析（
   - `class AgentSession`：`__init__(*, workdir, llm, max_iterations=20, max_context_tokens=90000, debug=False)`；`run_task(task, on_delta=None) -> RunResult`；属性 `conversation`
   - 终止：无 tool_calls → `finished=True, reason="complete"`；达 `max_iterations` → `finished=False, reason="max_iterations"`；连续失败 ≥3 轮 → `finished=False, reason="too many consecutive tool failures"`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `code_agent/tests/test_agent.py`:
 ```python
@@ -1270,12 +1272,12 @@ def test_agent_recovers_after_failure(workdir):
     assert result.iterations == 3
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `python -m pytest tests/test_agent.py -v`
 Expected: FAIL（`ModuleNotFoundError: No module named 'code_agent.agent'`）
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 `code_agent/code_agent/agent.py`:
 ```python
@@ -1381,14 +1383,14 @@ class AgentSession:
             return ToolResult(ok=False, output=f"tool crash: {type(e).__name__}: {e}")
 ```
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `python -m pytest tests/test_agent.py -v`
 Expected: PASS（全部用例）
 Run: `python -m pytest tests/ -v`
 Expected: 全部 PASS（smoke 1 + context 9 + tools 24 + llm 8 + agent 4 = 46 用例）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add code_agent/agent.py tests/test_agent.py
@@ -1411,7 +1413,7 @@ git commit -m "feat: agent.py 会话循环/终止条件/错误恢复（Task 6/8�
   - 环境变量：`CODE_AGENT_BASE_URL` / `CODE_AGENT_API_KEY`（缺失即报错退出）/ `CODE_AGENT_MODEL`；默认 `https://api.openai.com/v1` 与 `gpt-4o-mini`
   - 辅助：`_build_parser()`、`_make_client(args)`（无 key 时 `raise SystemExit`）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `code_agent/tests/test_cli.py`:
 ```python
@@ -1460,12 +1462,12 @@ def test_main_oneshot(monkeypatch, capsys):
     assert "hello" in capsys.readouterr().out
 ```
 
-- [ ] **Step 2: 运行确认失败**
+- [x] **Step 2: 运行确认失败**
 
 Run: `python -m pytest tests/test_cli.py -v`
 Expected: FAIL（`_build_parser` / `_make_client` 不存在或行为不符）
 
-- [ ] **Step 3: 最小实现**
+- [x] **Step 3: 最小实现**
 
 `code_agent/code_agent/cli.py`:
 ```python
@@ -1551,14 +1553,14 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 ```
 
-- [ ] **Step 4: 运行确认通过**
+- [x] **Step 4: 运行确认通过**
 
 Run: `python -m pytest tests/ -v`
 Expected: 全部 PASS
 Run: `python -m code_agent --help`
 Expected: 正常输出帮助（exit 0）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add code_agent/cli.py tests/test_cli.py
@@ -1576,24 +1578,24 @@ git commit -m "feat: cli.py 一次性与交互式入口（Task 7/8）"
 **Interfaces:**
 - Consumes: 全部已实现模块。
 
-- [ ] **Step 1: 全量测试**
+- [x] **Step 1: 全量测试**
 
 Run: `python -m pytest tests/ -v`
 Expected: 全部 PASS（smoke 1 + context 9 + tools 24 + llm 8 + agent 4 + cli 4 = 50 用例）
 
-- [ ] **Step 2: CLI 冒烟**
+- [x] **Step 2: CLI 冒烟**
 
 Run: `python -m code_agent --help`
 Expected: 帮助文本，exit 0
 Run: `python -m code_agent --prompt x`
 Expected: `error: CODE_AGENT_API_KEY is not set (or pass --api-key)`（无 key 时安全退出）
 
-- [ ] **Step 3: 凭据复核**
+- [x] **Step 3: 凭据复核**
 
 Run: `git grep -iE "sk-[a-zA-Z0-9]{10,}|api[_-]?key\s*[:=]\s*['\"]?[a-zA-Z0-9]{16,}" || echo "clean"`
 Expected: 输出 `clean`（无命中）
 
-- [ ] **Step 4: 更新 README.md**
+- [x] **Step 4: 更新 README.md**
 
 `code_agent/README.md`:
 ```markdown
@@ -1624,7 +1626,7 @@ python -m code_agent --interactive
 详见 `docs/`。
 ```
 
-- [ ] **Step 5: 冒烟真实验证（可选，需真实 key）**
+- [x] **Step 5: 冒烟真实验证（可选，需真实 key）**
 
 ```bash
 CODE_AGENT_API_KEY=... python -m code_agent --prompt "列出当前目录，然后读取 docs/design.md 的前 5 行，用一句话总结"
@@ -1632,7 +1634,7 @@ CODE_AGENT_API_KEY=... python -m code_agent --prompt "列出当前目录，然�
 Expected: agent 调用 list_dir / read_file 后给出中文总结。
 （若暂无可用 key，跳过后在演示阶段补做，并记录到文档 3。）
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add README.md
@@ -1645,11 +1647,11 @@ Expected: 完整历史：Initial commit → docs 初始化 → Task 1~8。
 
 ## 验收对照（实现完成后逐条打勾）
 
-- [ ] `python -m pytest tests/ -v` 全绿
-- [ ] `python -m code_agent --help` 正常
-- [ ] 无凭据入库（grep 复核 clean）
-- [ ] 5 工具 schema 完整（`test_tool_schemas_have_expected_names` 覆盖）
-- [ ] 上下文裁剪不产生孤儿 tool 消息（`test_context` 覆盖）
-- [ ] 终止条件生效（正常 / max_iterations / 连续失败，`test_agent` 覆盖）
-- [ ] mock 集成测试不依赖网络/真实 key（`test_agent` 覆盖）
-- [ ] README.md 更新；提交历史完整
+- [x] `python -m pytest tests/ -v` 全绿
+- [x] `python -m code_agent --help` 正常
+- [x] 无凭据入库（grep 复核 clean）
+- [x] 5 工具 schema 完整（`test_tool_schemas_have_expected_names` 覆盖）
+- [x] 上下文裁剪不产生孤儿 tool 消息（`test_context` 覆盖）
+- [x] 终止条件生效（正常 / max_iterations / 连续失败，`test_agent` 覆盖）
+- [x] mock 集成测试不依赖网络/真实 key（`test_agent` 覆盖）
+- [x] README.md 更新；提交历史完整

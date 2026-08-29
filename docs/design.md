@@ -23,7 +23,7 @@
 | 语言 | Python 3.11+ | 生态全、模型 SDK 支持好、异步/HTTP 简单 |
 | 模型接入 | OpenAI 兼容接口（/chat/completions） | 一个 Provider 抽象，切换模型只改环境变量 |
 | HTTP | requests 或 httpx | 依赖尽量少 |
-| 配置 | 环境变量（`.env` 不入库） | 满足凭据要求 |
+| 配置 | 环境变量 / `.env` 自动加载（`.env` 不入库） | 满足凭据要求 |
 | 环境管理 | uv（`.venv/` + `uv.lock`） | 环境隔离、可复现、`uv sync` 一键重建 |
 
 ## 4. 总体架构（方案 B：分层模块）
@@ -56,14 +56,14 @@ code_agent/
 
 ## 6. 功能范围（核心功能优先）
 
-本轮实现范围：
+v0.1.0 已实现范围：
 
-- [ ] 核心 agent 循环（调用模型 → 解析 → 执行工具 → 回填 → 判定终止）
-- [ ] 工具：read_file / write_file / edit_file / list_dir / run_command（全部自实现）
-- [ ] 上下文管理：消息序列维护、token 预算、超限裁剪、超长 tool 结果处理
-- [ ] 错误处理：工具错误回传、API 重试、命令超时、解析异常恢复
-- [ ] CLI：`--prompt` 一次性任务 + `--interactive` 对话模式，流式输出
-- [ ] 测试：工具/解析/上下文单元测试 + mock 模型集成测试 + 真实 API 冒烟测试
+- [x] 核心 agent 循环（调用模型 → 解析 → 执行工具 → 回填 → 判定终止）
+- [x] 工具：read_file / write_file / edit_file / list_dir / run_command（全部自实现）
+- [x] 上下文管理：消息序列维护、token 预算、超限裁剪、超长 tool 结果处理
+- [x] 错误处理：工具错误回传、API 重试（指数退避）、命令超时、解析异常恢复、LLM 错误优雅停止
+- [x] CLI：`--prompt` 一次性任务 + `--interactive` 对话模式，流式输出
+- [x] 测试：工具/解析/上下文单元测试 + mock 模型集成测试 + 真实 API 冒烟测试（54 用例全绿）
 
 暂不实现（留作后续扩展，遵循 YAGNI）：
 
@@ -78,12 +78,12 @@ code_agent/
 - `context-management.md`：消息历史 / token 预算 / 裁剪策略
 - `development.md`：运行 / 测试 / 验证 / 演示流程
 
-## 8. 开发路线
+## 8. 开发路线（进度截至 2026-08-29）
 
-1. 搭建骨架：模块空壳 + CLI 入口 + 项目配置
-2. 实现 `llm.py`：OpenAI 兼容封装 + tool_calls 解析
-3. 实现 `tools.py`：五个工具的本地执行器
-4. 实现 `context.py`：消息维护 + token 预算 + 裁剪
-5. 实现 `agent.py`：循环、终止条件、错误恢复
-6. 测试与冒烟：单元测试 → mock 集成测试 → 真实 API
-7. 演示准备：README.txt + 演示任务 + 视频脚本
+1. [x] 搭建骨架：模块空壳 + CLI 入口 + 项目配置
+2. [x] 实现 `llm.py`：OpenAI 兼容封装 + tool_calls 解析
+3. [x] 实现 `tools.py`：五个工具的本地执行器
+4. [x] 实现 `context.py`：消息维护 + token 预算 + 裁剪
+5. [x] 实现 `agent.py`：循环、终止条件、错误恢复
+6. [x] 测试与冒烟：单元测试 → mock 集成测试 → 真实 API（已完成，54 用例 + 两次真实冒烟）
+7. [ ] 演示准备：README.txt + 演示任务 + 视频脚本（待办）
