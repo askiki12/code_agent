@@ -291,7 +291,8 @@ def _glob(args: dict, workdir: str) -> ToolResult:
     out = "\n".join(matches)
     if truncated:
         out += f"\n...[search results truncated: more than {MAX_SEARCH_RESULTS} matched]"
-    return ToolResult(ok=True, output=out, truncated=truncated)
+    out, out_truncated = truncate(out)
+    return ToolResult(ok=True, output=out, truncated=truncated or out_truncated)
 
 
 _HANDLERS = {

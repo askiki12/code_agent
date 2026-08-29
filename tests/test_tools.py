@@ -182,3 +182,11 @@ def test_glob_no_match(workdir):
 def test_glob_requires_pattern(workdir):
     r = execute("glob", {}, workdir)
     assert not r.ok and "pattern" in r.output
+
+
+def test_glob_output_truncated(workdir):
+    name = "f" * 90
+    for i in range(120):
+        _write(os.path.join(workdir, f"{name}{i:03d}.txt"), "x")
+    r = execute("glob", {"pattern": "*.txt"}, workdir)
+    assert r.ok and r.truncated and "TRUNCATED" in r.output
