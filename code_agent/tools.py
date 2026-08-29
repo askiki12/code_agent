@@ -1,6 +1,7 @@
 """Tool definitions and local executors (all self-implemented)."""
 from __future__ import annotations
 
+import glob as globlib
 import os
 import subprocess
 from dataclasses import dataclass
@@ -8,6 +9,8 @@ from dataclasses import dataclass
 MAX_OUTPUT_CHARS = 8000
 DEFAULT_COMMAND_TIMEOUT = 120  # seconds
 MAX_LISTING_ENTRIES = 200
+MAX_SEARCH_RESULTS = 500
+MAX_GREP_LINE_CHARS = 200
 
 
 @dataclass
@@ -170,6 +173,15 @@ TOOL_SCHEMAS = [
         },
         ["command"],
     ),
+    _schema(
+        "glob",
+        "Find files by glob pattern (supports ** recursion). Refuses protected paths.",
+        {
+            "pattern": {"type": "string", "description": "Glob pattern, e.g. '**/*.py'"},
+            "path": {"type": "string", "description": "Directory to search (defaults to workdir)"},
+        },
+        ["pattern"],
+    ),
 ]
 
 def _write_file(args: dict, workdir: str) -> ToolResult:
@@ -254,12 +266,41 @@ def _run_command(args: dict, workdir: str) -> ToolResult:
     )
 
 
+def _glob(args: dict, workdir: str) -> ToolResult:
+    pattern_src = args.get("pattern", "")
+    if not pattern_src:
+        return ToolResult(ok=False, output="pattern is required")
+    path = _resolve(args.get("path", "."), workdir)
+    if not os.path.isdir(path):
+        return ToolResult(ok=False, output=f"directory not found: {path}")
+    matches: list[str] = []
+    for m in globlib.glob(os.path.join(path, pattern_src), recursive=True):
+        if not os.path.isfile(m):
+            continue
+        rel = os.path.relpath(m, workdir)
+        if _is_protected_path(rel):
+            continue
+        matches.append(rel)
+    matches.sort()
+    truncated = False
+    if len(matches) > MAX_SEARCH_RESULTS:
+        matches = matches[:MAX_SEARCH_RESULTS]
+        truncated = True
+    if not matches:
+        return ToolResult(ok=True, output="(no matches)")
+    out = "\n".join(matches)
+    if truncated:
+        out += f"\n...[search results truncated: more than {MAX_SEARCH_RESULTS} matched]"
+    return ToolResult(ok=True, output=out, truncated=truncated)
+
+
 _HANDLERS = {
     "read_file": _read_file,
     "write_file": _write_file,
     "edit_file": _edit_file,
     "list_dir": _list_dir,
     "run_command": _run_command,
+    "glob": _glob,
 }
 
 

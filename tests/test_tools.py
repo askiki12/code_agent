@@ -72,7 +72,7 @@ def test_execute_unknown_tool(workdir):
 
 def test_tool_schemas_have_expected_names():
     names = {s["function"]["name"] for s in TOOL_SCHEMAS}
-    assert names == {"read_file", "write_file", "edit_file", "list_dir", "run_command"}
+    assert names == {"read_file", "write_file", "edit_file", "list_dir", "run_command", "glob"}
 
 
 def test_write_file(workdir):
@@ -142,3 +142,43 @@ def test_run_command_timeout(workdir):
 def test_run_command_output_truncated(workdir):
     r = execute("run_command", {"command": "python3 -c \"print('x' * 20000)\""}, workdir)
     assert r.ok and r.truncated
+
+
+def test_glob_simple(workdir):
+    _write(os.path.join(workdir, "a.py"), "x")
+    _write(os.path.join(workdir, "b.txt"), "x")
+    r = execute("glob", {"pattern": "*.py"}, workdir)
+    assert r.ok and r.output == "a.py"
+
+
+def test_glob_recursive(workdir):
+    _write(os.path.join(workdir, "pkg", "__init__.py"), "x")
+    _write(os.path.join(workdir, "top.py"), "x")
+    r = execute("glob", {"pattern": "**/*.py"}, workdir)
+    assert r.ok and "top.py" in r.output and "pkg/__init__.py" in r.output
+
+
+def test_glob_subdir(workdir):
+    _write(os.path.join(workdir, "sub", "a.py"), "x")
+    r = execute("glob", {"pattern": "*.py", "path": "sub"}, workdir)
+    assert r.ok and r.output == "sub/a.py"
+
+
+def test_glob_skips_protected(workdir):
+    _write(os.path.join(workdir, "a.py"), "x")
+    _write(os.path.join(workdir, ".env"), "K=1")
+    _write(os.path.join(workdir, ".git", "config"), "x")
+    r = execute("glob", {"pattern": "**/.env*"}, workdir)
+    assert r.ok and r.output == "(no matches)"
+    r = execute("glob", {"pattern": "**/.git/**"}, workdir)
+    assert r.ok and r.output == "(no matches)" and "a.py" not in r.output
+
+
+def test_glob_no_match(workdir):
+    r = execute("glob", {"pattern": "*.xyz"}, workdir)
+    assert r.ok and "no matches" in r.output
+
+
+def test_glob_requires_pattern(workdir):
+    r = execute("glob", {}, workdir)
+    assert not r.ok and "pattern" in r.output
