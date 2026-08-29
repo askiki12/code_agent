@@ -67,6 +67,7 @@ v0.1.0 已实现范围：
 - [x] 测试：工具/解析/上下文单元测试 + mock 模型集成测试 + 真实 API 冒烟测试（115 用例全绿）
 - [x] 会话持久化与多会话管理（JSONL 存储，--list-sessions/--resume，交互斜杠命令 /new /list /resume）
 - [x] 工作区一等公民（workspace.json 元数据，交互启动展示概况与上次会话续接提示）
+- [x] 权限模型（allow/ask/deny 三态 + 只读命令白名单 + doom_loop 重复检测，--allow/--deny/--ask）
 
 暂不实现（留作后续扩展，遵循 YAGNI）：
 
@@ -93,3 +94,4 @@ v0.1.0 已实现范围：
 8. [ ] 演示准备：README.txt + 演示任务 + 视频脚本（待办）
 9. [x] 迭代增强：会话持久化 + 多会话管理（ADR-012，设计见 docs/superpowers/specs/2026-08-29-session-persistence-design.md）
 10. [x] 迭代增强：工作区一等公民（ADR-013，设计见 docs/superpowers/specs/2026-08-29-workspace-design.md）
+11. [x] 迭代增强：权限模型（ADR-014，设计见 docs/superpowers/specs/2026-08-29-permissions-design.md）

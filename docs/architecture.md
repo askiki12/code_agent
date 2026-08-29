@@ -12,6 +12,7 @@
 | `tools.py` | 工具 schema 定义 + 本地执行器 + 结果格式化（含 glob/grep 搜索与 gitignore 过滤） | 无（纯逻辑，标准库） |
 | `session.py` | 会话持久化：SessionStore（JSONL 存储/列表/恢复） | 无（纯逻辑，标准库） |
 | `workspace.py` | 工作区身份与元数据：Workspace（workspace.json 幂等读写/触摸/展示） | 无（纯逻辑，标准库） |
+| `permissions.py` | 权限模型：Policy（allow/ask/deny 三态、只读白名单、doom_loop） | 无（纯逻辑，标准库） |
 | `llm.py` | OpenAI 兼容 API 调用（流式）、响应/工具调用解析、重试 | requests |
 
 ## 2. 数据流
@@ -63,6 +64,11 @@ loop:                                             │
 - `Workspace(workdir)` — 读取/初始化 `<workdir>/.code_agent/workspace.json`（id = sha1(realpath)[:12]，name = basename）。
 - `touch_session(session_id)`：更新 last_session_id + updated_at（原子写）。
 - `display() -> str`："Workspace: <name> (<id>)"；实时统计由 CLI 拼接。
+
+### permissions.py
+- `Policy(allow=None, deny=None, ask=None)` — 规则 `tool:pattern`（fnmatch）。
+- `check(tool, arguments, interact=False) -> PermissionResult`：deny→ask→allow→默认 allow；run_command 应用只读白名单；doom_loop（连续相同调用 ≥3）→ deny。
+- 交互询问：`[permission] ... [y/N]`，y→allow 其余→deny；非交互 ask→deny。
 
 ### context.py
 - `Conversation` 类：内部维护消息列表（system/user/assistant/tool）。

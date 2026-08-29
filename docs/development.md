@@ -63,12 +63,15 @@ uv run python -m code_agent --interactive
 - `--debug`：输出详细日志。
 - `--list-sessions`：列出 `<workdir>/.code_agent/sessions/` 下的会话（id/标题/消息数/更新时间）。
 - `--resume <id>`：恢复指定会话（可与 `--prompt`/`--interactive` 组合）。
+- `--allow <tool:pattern>` / `--deny <tool:pattern>` / `--ask <tool:pattern>`：权限规则（可重复），如 `--deny "run_command:pytest *"`。
+- 三态：deny 拒绝 → ask 询问（交互模式 y/N，一次性任务直接拒绝）→ allow 放行；内置只读命令白名单（ls/cat/git status 等）免询问。
+- 连续相同工具调用达 3 次自动拒绝（doom_loop），防止模型重复卡死。
 - 交互模式斜杠命令：`/new`（新建）、`/list`（列出）、`/resume <id>`（恢复）、`/exit`（退出）。
 
 ## 3. 测试
 
 - 框架：`pytest`（经 `uv run`）。
-- 目录：`tests/`（当前 115 个用例，全部离线，无需 API key）。
+- 目录：`tests/`（当前 133 个用例，全部离线，无需 API key）。
   - `test_smoke.py`：包可导入、版本号。
   - `test_tools.py`：七个工具的本地执行用例（含 glob/grep）。
   - `test_llm_parse.py`：tool_calls 响应解析（含异常格式）。
@@ -77,6 +80,7 @@ uv run python -m code_agent --interactive
   - `test_cli.py`：`.env` 加载、缺 key 报错、一次性任务入口。
   - `test_session.py`：SessionStore 创建/保存/加载/列表/坏文件容错。
   - `test_workspace.py`：工作区初始化/幂等/损坏容错/touch_session。
+  - `test_permissions.py`：规则解析/三态/只读白名单/doom_loop/交互询问。
 - 运行全部测试：
 
 ```bash
