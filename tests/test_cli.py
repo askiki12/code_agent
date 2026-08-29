@@ -157,3 +157,47 @@ def test_main_oneshot_does_not_show_workspace(monkeypatch, capsys, tmp_path):
     assert rc == 0
     out = capsys.readouterr().out
     assert "Workspace:" not in out
+
+
+def test_main_policy_passed_and_rules_applied(monkeypatch, tmp_path):
+    monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
+    captured = {}
+
+    class _CaptureSession:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def run_task(self, task, on_delta=None):
+            return RunResult(final_text="ok", iterations=1, finished=True, reason="complete")
+
+    monkeypatch.setattr("code_agent.cli.AgentSession", _CaptureSession)
+    rc = main(["--prompt", "x", "--workdir", str(tmp_path),
+               "--deny", "run_command:pytest *", "--allow", "read_file:*"])
+    assert rc == 0
+    policy = captured.get("policy")
+    assert policy is not None
+    assert captured.get("interact") is False
+    assert policy.check("run_command", {"command": "pytest tests/"}).decision == "deny"
+    assert policy.check("read_file", {"path": "a"}).decision == "allow"
+
+
+def test_main_interactive_policy_interact(monkeypatch, tmp_path):
+    monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
+    captured = {}
+
+    class _CaptureSession:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def new_session(self):
+            pass
+
+        def load_session(self, sid):
+            pass
+
+    inputs = iter(["/exit"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("code_agent.cli.AgentSession", _CaptureSession)
+    rc = main(["--interactive", "--workdir", str(tmp_path)])
+    assert rc == 0
+    assert captured.get("interact") is True

@@ -7,6 +7,7 @@ import sys
 
 from code_agent.agent import AgentSession
 from code_agent.llm import LLMClient
+from code_agent.permissions import Policy
 from code_agent.session import SessionStore
 from code_agent.workspace import Workspace
 
@@ -44,6 +45,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-i", "--interactive", action="store_true", help="Start an interactive session")
     parser.add_argument("--list-sessions", action="store_true", help="List saved sessions and exit")
     parser.add_argument("--resume", help="Resume a session by id")
+    parser.add_argument("--allow", action="append", default=[], metavar="TOOL:PATTERN", help="Allow rule (repeatable)")
+    parser.add_argument("--deny", action="append", default=[], metavar="TOOL:PATTERN", help="Deny rule (repeatable)")
+    parser.add_argument("--ask", action="append", default=[], metavar="TOOL:PATTERN", help="Ask rule (repeatable)")
     parser.add_argument("--workdir", default=".", help="Working directory (default: current dir)")
     parser.add_argument("--base-url", help="OpenAI-compatible base URL")
     parser.add_argument("--api-key", help="API key (default: env CODE_AGENT_API_KEY)")
@@ -123,6 +127,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{s['id']}  {s['title'] or ''}  ({s['message_count']} msgs, {s['updated_at']})")
         return 0
     llm = _make_client(args)
+    policy = Policy(allow=args.allow, deny=args.deny, ask=args.ask)
     try:
         session = AgentSession(
             workdir=workdir,
@@ -134,6 +139,8 @@ def main(argv: list[str] | None = None) -> int:
             session_id=args.resume,
             resume=args.resume is not None,
             workspace=workspace,
+            policy=policy,
+            interact=args.interactive,
         )
     except KeyError:
         print(f"session not found: {args.resume}", file=sys.stderr)
