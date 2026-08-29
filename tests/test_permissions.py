@@ -72,3 +72,10 @@ def test_pattern_matches_command_text():
     p = Policy(deny=["run_command:git *"])
     assert p.check("run_command", {"command": "git status"}).decision == "deny"
     assert p.check("run_command", {"command": "git log"}).decision == "deny"
+
+
+def test_trailing_wildcard_matches_bare_command():
+    p = Policy(deny=["run_command:git push *"])
+    assert p.check("run_command", {"command": "git push"}).decision == "deny"
+    assert p.check("run_command", {"command": "git push origin main"}).decision == "deny"
+    assert p.check("run_command", {"command": "git status"}).decision == "allow"

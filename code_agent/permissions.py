@@ -13,7 +13,7 @@ READONLY_PREFIXES = [
     "ls", "cat", "head", "tail", "grep", "rg", "pwd", "whoami",
     "echo", "date", "find", "wc", "file",
     "python3 -V", "python -V",
-    "git status", "git log", "git diff", "git show", "git branch",
+    "git status", "git log", "git diff", "git show",
 ]
 
 _SHELL_OPS = (";", "|", "&&", "||", ">", "<", ">>", "&", "`", "$(")
@@ -80,6 +80,8 @@ class Policy:
                 continue
             if fnmatch.fnmatch(text, pattern):
                 return True
+            # plain fnmatch can't match a bare command against "cmd *" (e.g. "git push" vs "git push *");
+            # the trailing " *" fallback treats the pattern as "cmd" too
             if pattern.endswith(" *") and fnmatch.fnmatch(text, pattern[:-2]):
                 return True
         return False
@@ -108,8 +110,12 @@ class Policy:
             return PermissionResult("deny", "denied by rule")
         if self._matches(self._ask, tool, text):
             if interact:
-                prompt = f"[permission] {tool}({text[:60]!r}) allowed? [y/N] "
-                decision = "allow" if input(prompt).strip().lower() == "y" else "deny"
+                try:
+                    decision = "allow" if input(
+                        f"[permission] {tool}({text[:60]!r}) allowed? [y/N] "
+                    ).strip().lower() == "y" else "deny"
+                except (EOFError, OSError):
+                    decision = "deny"
             else:
                 decision = "deny"
             self._calls.append(key)

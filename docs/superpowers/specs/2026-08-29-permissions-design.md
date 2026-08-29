@@ -35,7 +35,7 @@
 - `pattern` 用 fnmatch 匹配**匹配文本**：
   - `run_command`：匹配文本 = `arguments["command"]` 字符串（如 `run_command:git *` 匹配 `git status`、`git log`）。
   - 其它工具：匹配文本 = `json.dumps(arguments, sort_keys=True, ensure_ascii=False)`（如 `write_file:*.env*` 匹配 path 含 `.env` 的写入）。
-  - pattern 为空/`*` 时匹配该工具的任何调用；`tool` 部分精确匹配工具名。
+  - pattern 用 `*` 匹配该工具的任何调用（空 pattern 视为非法规则被忽略）；`tool` 部分精确匹配工具名。
 - 三态求值顺序（deny → ask → allow）：
   1. **deny**：任一条 deny 规则命中 → 拒绝；受保护路径（tools.py 既有）强制拒绝。
   2. **ask**：任一条 ask 规则命中 → 有交互能力时询问，否则降级 deny。
@@ -46,10 +46,11 @@
 ### 3.2 只读命令白名单
 
 - 内置白名单（前缀匹配，命令首 token 或 `git <subcommand>`）：
-  `ls, cat, head, tail, grep, rg, pwd, whoami, echo, date, find, wc, file, python3 -V, git status, git log, git diff, git show, git branch`
+  `ls, cat, head, tail, grep, rg, pwd, whoami, echo, date, find, wc, file, python3 -V, git status, git log, git diff, git show`
 - 仅对 `run_command` 生效。
 - 命令含 shell 运算符（`;` `|` `&&` `||` `>` `<` `>>` `&` `` ` `` `$(`）→ 不在白名单（保守，需走规则/默认）。
 - 白名单匹配时直接 allow（不询问）。
+- 注意：白名单是**预留快路径**——默认 allow 策略下它是惰性的（不改变任何判定），真正保护依赖 `--deny`/`--ask` 显式规则；显式规则优先于白名单。
 
 ### 3.3 doom_loop 重复检测
 

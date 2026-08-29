@@ -64,7 +64,7 @@ uv run python -m code_agent --interactive
 - `--list-sessions`：列出 `<workdir>/.code_agent/sessions/` 下的会话（id/标题/消息数/更新时间）。
 - `--resume <id>`：恢复指定会话（可与 `--prompt`/`--interactive` 组合）。
 - `--allow <tool:pattern>` / `--deny <tool:pattern>` / `--ask <tool:pattern>`：权限规则（可重复），如 `--deny "run_command:pytest *"`。
-- 三态：deny 拒绝 → ask 询问（交互模式 y/N，一次性任务直接拒绝）→ allow 放行；内置只读命令白名单（ls/cat/git status 等）免询问。
+- 三态：deny 拒绝 → ask 询问（交互模式 y/N，一次性任务直接拒绝）→ allow 放行；内置只读命令白名单（ls/cat/git status 等）为预留快路径，仅在默认策略收紧时才有意义（当前默认放行使其惰性，`--deny`/`--ask` 显式规则优先于白名单）。
 - 连续相同工具调用达 3 次自动拒绝（doom_loop），防止模型重复卡死。
 - 交互模式斜杠命令：`/new`（新建）、`/list`（列出）、`/resume <id>`（恢复）、`/exit`（退出）。
 
