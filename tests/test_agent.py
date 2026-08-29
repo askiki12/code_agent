@@ -223,3 +223,29 @@ def test_agent_without_workspace_unchanged(workdir):
     session = AgentSession(workdir=workdir, llm=llm, max_iterations=5)
     result = session.run_task("read the file")
     assert result.finished and result.final_text == "done"
+
+
+def test_agent_deny_rule_blocks_tool(workdir):
+    from code_agent.permissions import Policy
+    Path(workdir, "a.txt").write_text("hello", encoding="utf-8")
+    llm = FakeLLM([
+        _read_call("c1", "a.txt"),
+        LLMResponse(content="done", tool_calls=[]),
+    ])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5, policy=Policy(deny=["read_file:*"]))
+    result = session.run_task("read the file")
+    assert result.finished and result.final_text == "done"
+    tool_msgs = [m for m in session.conversation.messages if m["role"] == "tool"]
+    assert tool_msgs and "permission denied" in tool_msgs[0]["content"]
+
+
+def test_agent_doom_loop_blocks_repeated_call(workdir):
+    from code_agent.permissions import Policy
+    Path(workdir, "a.txt").write_text("hello", encoding="utf-8")
+    call = _read_call("c1", "a.txt")
+    llm = FakeLLM([call, call, call])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=3, policy=Policy())
+    result = session.run_task("loop")
+    assert not result.finished and result.reason == "max_iterations"
+    tool_msgs = [m for m in session.conversation.messages if m["role"] == "tool"]
+    assert any("doom_loop" in m["content"] for m in tool_msgs)

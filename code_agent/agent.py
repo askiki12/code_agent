@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from code_agent.context import Conversation
 from code_agent.llm import LLMError
+from code_agent.permissions import Policy
 from code_agent.session import SessionStore, _make_title
 from code_agent.tools import TOOL_SCHEMAS, ToolResult, execute
 from code_agent.workspace import Workspace
@@ -56,6 +57,8 @@ class AgentSession:
         session_id: str | None = None,
         resume: bool = False,
         workspace: Workspace | None = None,
+        policy: Policy | None = None,
+        interact: bool = False,
     ) -> None:
         self.workdir = workdir
         self.llm = llm
@@ -64,6 +67,8 @@ class AgentSession:
         self.debug = debug
         self.store = store
         self.workspace = workspace
+        self.policy = policy
+        self.interact = interact
         self.session_id = session_id
         if resume:
             if session_id is None:
@@ -161,6 +166,11 @@ class AgentSession:
         self.session_id = session_id
 
     def _run_tool(self, tc) -> ToolResult:
+        if self.policy is not None:
+            result = self.policy.check(tc.name, tc.arguments, interact=self.interact)
+            if result.decision == "deny":
+                reason = result.reason or tc.name
+                return ToolResult(ok=False, output=f"permission denied: {reason}")
         try:
             return execute(tc.name, tc.arguments, self.workdir)
         except Exception as e:  # noqa: BLE001 - last-resort guard
