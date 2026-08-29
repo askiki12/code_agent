@@ -114,3 +114,30 @@ def test_main_interactive_slash_commands(monkeypatch, capsys, tmp_path):
     rc = main(["--interactive", "--workdir", str(tmp_path)])
     out = capsys.readouterr().out
     assert sid in out and rc == 0
+
+
+def test_main_interactive_shows_workspace(monkeypatch, capsys, tmp_path):
+    from code_agent.session import SessionStore
+    from code_agent.workspace import Workspace
+    monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
+    store = SessionStore(str(tmp_path / ".code_agent" / "sessions"))
+    sid = store.create("existing")
+    store.save(sid, [{"role": "user", "content": "hi"}])
+    Workspace(str(tmp_path)).touch_session(sid)
+    inputs = iter(["/exit"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("code_agent.cli.AgentSession", _FakeSession)
+    rc = main(["--interactive", "--workdir", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert "Workspace:" in out and "sessions: 1" in out and "last:" in out
+    assert "Tip: /resume" in out and sid in out
+    assert rc == 0
+
+
+def test_main_oneshot_does_not_show_workspace(monkeypatch, capsys, tmp_path):
+    monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
+    monkeypatch.setattr("code_agent.cli.AgentSession", _FakeSession)
+    rc = main(["--prompt", "do it", "--workdir", str(tmp_path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Workspace:" not in out

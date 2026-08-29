@@ -8,6 +8,7 @@ import sys
 from code_agent.agent import AgentSession
 from code_agent.llm import LLMClient
 from code_agent.session import SessionStore
+from code_agent.workspace import Workspace
 
 _DEFAULTS = {
     "base_url": "https://api.openai.com/v1",
@@ -110,6 +111,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     _load_dotenv()
     workdir = os.path.abspath(args.workdir)
+    try:
+        workspace = Workspace(workdir)
+    except OSError:
+        workspace = None
     store = _make_store(workdir)
     if args.list_sessions:
         if args.prompt or args.interactive:
@@ -128,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
             store=store,
             session_id=args.resume,
             resume=args.resume is not None,
+            workspace=workspace,
         )
     except KeyError:
         print(f"session not found: {args.resume}", file=sys.stderr)
@@ -135,6 +141,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.prompt:
         _run(session, args.prompt)
         return 0
+    if workspace is not None:
+        sessions = store.list_sessions()
+        line = workspace.display() + f" | sessions: {len(sessions)}"
+        last = workspace.last_session_id
+        if last and any(s["id"] == last for s in sessions):
+            line += f" | last: {last}"
+            print(line)
+            print(f"Tip: /resume {last} 续接上次会话")
+        else:
+            print(line)
     print("Interactive mode. Type 'exit', 'quit' or '/exit' to leave. Commands: /new /list /resume <id>")
     while True:
         try:
