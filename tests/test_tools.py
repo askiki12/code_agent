@@ -358,3 +358,8 @@ def test_grep_skips_code_agent(workdir):
     _write(os.path.join(workdir, "a.py"), "secret\n")
     r = execute("grep", {"pattern": "secret", "output_mode": "files_with_matches"}, workdir)
     assert r.ok and "a.py" in r.output and ".code_agent" not in r.output
+
+
+def test_execute_use_skill_unknown_without_registry(workdir):
+    r = execute("use_skill", {"name": "x"}, workdir)
+    assert not r.ok and "unknown tool" in r.output
