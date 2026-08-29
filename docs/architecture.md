@@ -13,6 +13,7 @@
 | `session.py` | 会话持久化：SessionStore（JSONL 存储/列表/恢复） | 无（纯逻辑，标准库） |
 | `workspace.py` | 工作区身份与元数据：Workspace（workspace.json 幂等读写/触摸/展示） | 无（纯逻辑，标准库） |
 | `permissions.py` | 权限模型：Policy（allow/ask/deny 三态、只读白名单、doom_loop） | 无（纯逻辑，标准库） |
+| `skills.py` | 技能库：SkillRegistry（项目+用户级 SKILL.md 扫描/加载） | 无（纯逻辑，标准库） |
 | `llm.py` | OpenAI 兼容 API 调用（流式）、响应/工具调用解析、重试 | requests |
 
 ## 2. 数据流
@@ -70,6 +71,11 @@ loop:                                             │
 - `check(tool, arguments, interact=False) -> PermissionResult`：deny→ask→allow→默认 allow；run_command 应用只读白名单；doom_loop（连续相同调用 ≥3）→ deny。
 - 交互询问：`[permission] ... [y/N]`，y→allow 其余→deny；非交互 ask→deny。
 
+### skills.py
+- `SkillRegistry(project_dir, user_dir=None)` — 扫描 `<workdir>/.code_agent/skills/` 与 `~/.code_agent/skills/`（同名项目优先）。
+- `scan() -> list[Skill]`（按 name 排序）/ `load(name) -> str | None`（SKILL.md 全文）。
+- SKILL.md frontmatter：`name` / `description`；缺失或非法跳过并警告。
+
 ### context.py
 - `Conversation` 类：内部维护消息列表（system/user/assistant/tool）。
 - `add_system` / `add_user` / `add_assistant(content, tool_calls=None)` / `add_tool(tool_call_id, name, output)`。
@@ -78,7 +84,8 @@ loop:                                             │
 - `estimate_tokens(text) -> int` — 启发式估算（CJK≈1 token，其它≈每 4 字符 1 token）。
 
 ### agent.py
-- `AgentSession(*, workdir, llm, max_iterations=20, max_context_tokens=90000, debug=False)` — `llm` 依赖注入，便于测试。
+- `AgentSession(*, workdir, llm, skills=None, max_iterations=20, max_context_tokens=90000, debug=False)` — `llm` 依赖注入，便于测试。
+- `use_skill` 工具在 skills 存在时注册；system prompt 注入技能列表（Available skills），加载的 SKILL.md 全文回传模型。
 - `run_task(task, on_delta=None) -> RunResult` — 主循环；`RunResult` 含 `final_text/iterations/finished/reason`。
 - 终止条件（三条）：无 tool_calls（`complete`）／达到 `max_iterations`／连续失败（工具或 LLM 错误）达 3 次。
 - 错误恢复：工具异常包装为 `ToolResult(ok=False)` 回传模型；`LLMError` 注入修复提示并计数，达阈值优雅终止。

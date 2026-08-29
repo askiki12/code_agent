@@ -68,6 +68,7 @@ v0.1.0 已实现范围：
 - [x] 会话持久化与多会话管理（JSONL 存储，--list-sessions/--resume，交互斜杠命令 /new /list /resume）
 - [x] 工作区一等公民（workspace.json 元数据，交互启动展示概况与上次会话续接提示）
 - [x] 权限模型（allow/ask/deny 三态 + 只读命令白名单 + doom_loop 重复检测，--allow/--deny/--ask）
+- [x] skill 机制（SKILL.md 技能库，use_skill 按需加载，项目+用户级）
 
 暂不实现（留作后续扩展，遵循 YAGNI）：
 
@@ -95,3 +96,4 @@ v0.1.0 已实现范围：
 9. [x] 迭代增强：会话持久化 + 多会话管理（ADR-012，设计见 docs/superpowers/specs/2026-08-29-session-persistence-design.md）
 10. [x] 迭代增强：工作区一等公民（ADR-013，设计见 docs/superpowers/specs/2026-08-29-workspace-design.md）
 11. [x] 迭代增强：权限模型（ADR-014，设计见 docs/superpowers/specs/2026-08-29-permissions-design.md）
+12. [x] 迭代增强：skill 机制（ADR-015，设计见 docs/superpowers/specs/2026-08-29-skills-design.md）

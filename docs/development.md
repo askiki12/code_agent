@@ -67,11 +67,13 @@ uv run python -m code_agent --interactive
 - 三态：deny 拒绝 → ask 询问（交互模式 y/N，一次性任务直接拒绝）→ allow 放行；内置只读命令白名单（ls/cat/git status 等）为预留快路径，仅在默认策略收紧时才有意义（当前默认放行使其惰性，`--deny`/`--ask` 显式规则优先于白名单）。
 - 连续相同工具调用达 3 次自动拒绝（doom_loop），防止模型重复卡死。
 - 交互模式斜杠命令：`/new`（新建）、`/list`（列出）、`/resume <id>`（恢复）、`/exit`（退出）。
+- 技能（skill）：从 `<workdir>/.code_agent/skills/<name>/SKILL.md`（项目级）与 `~/.code_agent/skills/<name>/SKILL.md`（用户级，同名项目优先）扫描。
+  SKILL.md 格式：`---` frontmatter（`name` / `description`）+ markdown 正文；agent 通过 `use_skill` 工具按需加载并遵循执行。
 
 ## 3. 测试
 
 - 框架：`pytest`（经 `uv run`）。
-- 目录：`tests/`（当前 134 个用例，全部离线，无需 API key）。
+- 目录：`tests/`（当前 146 个用例，全部离线，无需 API key）。
   - `test_smoke.py`：包可导入、版本号。
   - `test_tools.py`：七个工具的本地执行用例（含 glob/grep）。
   - `test_llm_parse.py`：tool_calls 响应解析（含异常格式）。
@@ -81,6 +83,7 @@ uv run python -m code_agent --interactive
   - `test_session.py`：SessionStore 创建/保存/加载/列表/坏文件容错。
   - `test_workspace.py`：工作区初始化/幂等/损坏容错/touch_session。
   - `test_permissions.py`：规则解析/三态/只读白名单/doom_loop/交互询问。
+  - `test_skills.py`：技能扫描/合并/覆盖/frontmatter 解析/加载。
 - 运行全部测试：
 
 ```bash
