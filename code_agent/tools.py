@@ -186,7 +186,7 @@ TOOL_SCHEMAS = [
     ),
     _schema(
         "grep",
-        "Search file contents with a regex. Skips .git, protected and gitignored paths.",
+        "Search file contents with a regex. Skips .git and protected paths.",
         {
             "pattern": {"type": "string", "description": "Regex to search"},
             "path": {"type": "string", "description": "File or directory (defaults to workdir)"},
@@ -381,9 +381,9 @@ def _grep(args: dict, workdir: str) -> ToolResult:
         except OSError:
             return
         file_matches: list[tuple[int, str]] = [
-            (lineno, line.rstrip("\n"))
+            (lineno, line.rstrip("\r\n"))
             for lineno, line in enumerate(lines, 1)
-            if pattern.search(line.rstrip("\n"))
+            if pattern.search(line.rstrip("\r\n"))
         ]
         if not file_matches:
             return
@@ -410,6 +410,7 @@ def _grep(args: dict, workdir: str) -> ToolResult:
         for abs_path, rel in _walk_searchable(path, workdir, include):
             process(abs_path, rel)
             if total >= MAX_SEARCH_RESULTS:
+                truncated = True
                 break
     else:
         if include and not fnmatch.fnmatch(os.path.basename(path), include):

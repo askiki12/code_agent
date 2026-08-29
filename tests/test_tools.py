@@ -267,3 +267,11 @@ def test_grep_long_line_clipped(workdir):
     _write(os.path.join(workdir, "a.py"), "x" * 300 + "\n")
     r = execute("grep", {"pattern": "x"}, workdir)
     assert r.ok and "a.py:1:" in r.output and "..." in r.output
+
+
+def test_grep_result_cap_truncated(workdir):
+    _write(os.path.join(workdir, "a.py"), "hit\n" * 500)
+    _write(os.path.join(workdir, "b.py"), "hit\n" * 100)
+    r = execute("grep", {"pattern": "hit"}, workdir)
+    assert r.ok and r.truncated
+    assert "search truncated" in r.output
