@@ -47,7 +47,7 @@ loop:                                             │
 - 错误语义：429/5xx/网络错误指数退避重试（默认 3 次）；非重试性 HTTP 错误与畸形 tool 参数 JSON 抛 `LLMError`。
 
 ### tools.py
-- `TOOL_SCHEMAS: list[dict]` — 5 个工具（read_file/write_file/edit_file/list_dir/run_command）的 OpenAI functions JSON Schema。
+- `TOOL_SCHEMAS: list[dict]` — 7 个工具（read_file/write_file/edit_file/list_dir/run_command/glob/grep）的 OpenAI functions JSON Schema。
 - `execute(name, args, workdir) -> ToolResult`。
 - `ToolResult`：`{ok: bool, output: str, truncated: bool, exit_code?: int}` + `as_message()`。
 - 所有输出为纯文本，便于回填给模型；超长自动截断（默认 8000 字符）；受保护路径（`.env*` 除 `.env.example`、`.git`）禁读禁写；写操作限定工作目录内。
