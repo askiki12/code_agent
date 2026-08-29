@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -127,9 +128,13 @@ class AgentSession:
             )
         finally:
             if self.store is not None:
-                if self.session_id is None:
-                    self.session_id = self.store.create(self._title())
-                self.store.save(self.session_id, self.conversation.messages, title=self._title())
+                title = self._title()
+                try:
+                    if self.session_id is None:
+                        self.session_id = self.store.create(title)
+                    self.store.save(self.session_id, self.conversation.messages, title=title)
+                except OSError as e:
+                    print(f"[agent] warning: failed to save session: {e}", file=sys.stderr)
 
     def _title(self) -> str:
         for m in self.conversation.messages:

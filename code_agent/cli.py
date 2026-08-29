@@ -144,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
         task = task.strip()
         if not task:
             continue
-        if task.lower() in {"exit", "quit"} or task == "/exit":
+        if task.lower() in {"exit", "quit"}:
             break
         if task.startswith("/"):
             if not _handle_command(task, session, store):

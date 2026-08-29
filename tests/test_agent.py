@@ -158,6 +158,32 @@ def test_agent_resume_without_session_id_raises(workdir):
         AgentSession(workdir=workdir, llm=FakeLLM([]), store=store, resume=True)
 
 
+class _FailingStore:
+    def __init__(self):
+        self.session_id = "code_agent-fail"
+
+    def create(self, title):
+        self.session_id = "code_agent-fail"
+        return self.session_id
+
+    def save(self, session_id, messages, title=None):
+        raise OSError("disk full")
+
+    def load(self, session_id):
+        raise KeyError(session_id)
+
+
+def test_agent_save_failure_does_not_crash(workdir):
+    Path(workdir, "a.txt").write_text("hello", encoding="utf-8")
+    llm = FakeLLM([
+        _read_call("c1", "a.txt"),
+        LLMResponse(content="done", tool_calls=[]),
+    ])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5, store=_FailingStore())
+    result = session.run_task("read the file")
+    assert result.finished and result.final_text == "done"
+
+
 def test_agent_load_session_switches_conversation(workdir, tmp_path):
     from code_agent.session import SessionStore
     store = SessionStore(str(tmp_path / "sessions"))
