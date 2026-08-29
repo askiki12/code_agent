@@ -12,6 +12,7 @@ def test_make_client_missing_key(monkeypatch):
 
 
 def test_make_client_from_env(monkeypatch):
+    monkeypatch.delenv("CODE_AGENT_MODEL", raising=False)
     monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
     args = _build_parser().parse_args(["--prompt", "x"])
     client = _make_client(args)
