@@ -1,11 +1,13 @@
 """Agent session loop, termination, and error recovery."""
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, Callable
 
 from code_agent.context import Conversation
 from code_agent.llm import LLMError
+from code_agent.session import SessionStore, _make_title
 from code_agent.tools import TOOL_SCHEMAS, ToolResult, execute
 
 SYSTEM_PROMPT = """You are a coding agent. You work inside a local workspace and complete software tasks autonomously.
@@ -48,70 +50,105 @@ class AgentSession:
         max_iterations: int = MAX_ITERATIONS_DEFAULT,
         max_context_tokens: int = 90000,
         debug: bool = False,
+        store: SessionStore | None = None,
+        session_id: str | None = None,
+        resume: bool = False,
     ) -> None:
         self.workdir = workdir
         self.llm = llm
         self.max_iterations = max_iterations
         self.max_context_tokens = max_context_tokens
         self.debug = debug
-        self.conversation = Conversation()
-        self.conversation.add_system(SYSTEM_PROMPT)
+        self.store = store
+        self.session_id = session_id
+        if resume:
+            if session_id is None:
+                raise ValueError("resume=True requires session_id")
+            self.load_session(session_id)
+        else:
+            self.conversation = Conversation()
+            self.conversation.add_system(SYSTEM_PROMPT)
 
     def run_task(self, task: str, on_delta: Callable[[str], None] | None = None) -> RunResult:
         self.conversation.add_user(task)
         consecutive_failures = 0
         llm_error_count = 0
-        for iteration in range(1, self.max_iterations + 1):
-            if self.debug:
-                print(f"[agent] iteration {iteration}")
-            messages = self.conversation.build_messages(self.max_context_tokens)
-            try:
-                response = self.llm.chat(messages, tools=TOOL_SCHEMAS, on_delta=on_delta)
-            except LLMError as e:
-                llm_error_count += 1
-                if llm_error_count >= MAX_CONSECUTIVE_FAILURES:
+        try:
+            for iteration in range(1, self.max_iterations + 1):
+                if self.debug:
+                    print(f"[agent] iteration {iteration}")
+                messages = self.conversation.build_messages(self.max_context_tokens)
+                try:
+                    response = self.llm.chat(messages, tools=TOOL_SCHEMAS, on_delta=on_delta)
+                except LLMError as e:
+                    llm_error_count += 1
+                    if llm_error_count >= MAX_CONSECUTIVE_FAILURES:
+                        return RunResult(
+                            final_text="",
+                            iterations=iteration,
+                            finished=False,
+                            reason=f"llm error: {e}",
+                        )
+                    self.conversation.add_user(
+                        f"[system] An LLM error occurred: {e}. "
+                        "Please reply in plain text without tool calls, or continue if possible."
+                    )
+                    continue
+                llm_error_count = 0
+                self.conversation.add_assistant(response.content, response.tool_calls or None)
+                if not response.tool_calls:
+                    return RunResult(
+                        final_text=response.content,
+                        iterations=iteration,
+                        finished=True,
+                        reason="complete",
+                    )
+                round_failed = False
+                for tc in response.tool_calls:
+                    result = self._run_tool(tc)
+                    if not result.ok:
+                        round_failed = True
+                    if self.debug:
+                        print(f"[tool] {tc.name}: ok={result.ok} truncated={result.truncated}")
+                    self.conversation.add_tool(tc.id, tc.name, result.as_message())
+                consecutive_failures = consecutive_failures + 1 if round_failed else 0
+                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
                     return RunResult(
                         final_text="",
                         iterations=iteration,
                         finished=False,
-                        reason=f"llm error: {e}",
+                        reason="too many consecutive tool failures",
                     )
-                self.conversation.add_user(
-                    f"[system] An LLM error occurred: {e}. "
-                    "Please reply in plain text without tool calls, or continue if possible."
-                )
-                continue
-            llm_error_count = 0
-            self.conversation.add_assistant(response.content, response.tool_calls or None)
-            if not response.tool_calls:
-                return RunResult(
-                    final_text=response.content,
-                    iterations=iteration,
-                    finished=True,
-                    reason="complete",
-                )
-            round_failed = False
-            for tc in response.tool_calls:
-                result = self._run_tool(tc)
-                if not result.ok:
-                    round_failed = True
-                if self.debug:
-                    print(f"[tool] {tc.name}: ok={result.ok} truncated={result.truncated}")
-                self.conversation.add_tool(tc.id, tc.name, result.as_message())
-            consecutive_failures = consecutive_failures + 1 if round_failed else 0
-            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                return RunResult(
-                    final_text="",
-                    iterations=iteration,
-                    finished=False,
-                    reason="too many consecutive tool failures",
-                )
-        return RunResult(
-            final_text="",
-            iterations=self.max_iterations,
-            finished=False,
-            reason="max_iterations",
-        )
+            return RunResult(
+                final_text="",
+                iterations=self.max_iterations,
+                finished=False,
+                reason="max_iterations",
+            )
+        finally:
+            if self.store is not None:
+                if self.session_id is None:
+                    self.session_id = self.store.create(self._title())
+                self.store.save(self.session_id, self.conversation.messages, title=self._title())
+
+    def _title(self) -> str:
+        for m in self.conversation.messages:
+            if m.get("role") == "user":
+                return _make_title(str(m.get("content", "")))
+        return ""
+
+    def new_session(self) -> None:
+        self.conversation = Conversation()
+        self.conversation.add_system(SYSTEM_PROMPT)
+        self.session_id = None
+
+    def load_session(self, session_id: str) -> None:
+        if self.store is None:
+            raise ValueError("no session store configured")
+        _, messages = self.store.load(session_id)
+        text = "\n".join(json.dumps(m, ensure_ascii=False) for m in messages)
+        self.conversation = Conversation.from_jsonl(text, system_prompt=SYSTEM_PROMPT)
+        self.session_id = session_id
 
     def _run_tool(self, tc) -> ToolResult:
         try:

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from code_agent.agent import AgentSession
 from code_agent.llm import LLMError, LLMResponse, ToolCall
 
@@ -107,4 +109,64 @@ def test_agent_recovers_after_transient_llm_error(workdir):
     assert result.finished and result.reason == "complete"
     assert result.final_text == "done"
     assert result.iterations == 3
+    assert session.conversation.is_valid()
+
+
+def test_agent_with_store_saves_after_task(workdir, tmp_path):
+    from code_agent.session import SessionStore
+    Path(workdir, "a.txt").write_text("hello", encoding="utf-8")
+    store = SessionStore(str(tmp_path / "sessions"))
+    llm = FakeLLM([
+        _read_call("c1", "a.txt"),
+        LLMResponse(content="done", tool_calls=[]),
+    ])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5, store=store)
+    result = session.run_task("read the file")
+    assert result.finished
+    assert session.session_id is not None
+    meta, msgs = store.load(session.session_id)
+    assert meta["title"] == "read the file"
+    assert any(m.get("role") == "tool" for m in msgs)
+
+
+def test_agent_resume_restores_conversation(workdir, tmp_path):
+    from code_agent.session import SessionStore
+    store = SessionStore(str(tmp_path / "sessions"))
+    sid = store.create("resume-me")
+    store.save(sid, [
+        {"role": "user", "content": "old task"},
+        {"role": "assistant", "content": "old reply"},
+    ])
+    Path(workdir, "a.txt").write_text("hello", encoding="utf-8")
+    llm = FakeLLM([
+        _read_call("c1", "a.txt"),
+        LLMResponse(content="done", tool_calls=[]),
+    ])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5, store=store, session_id=sid, resume=True)
+    assert session.session_id == sid
+    result = session.run_task("continue")
+    assert result.finished
+    contents = [m.get("content") for m in session.conversation.messages]
+    assert "old task" in contents
+    assert "continue" in contents
+
+
+def test_agent_resume_without_session_id_raises(workdir):
+    from code_agent.session import SessionStore
+    store = SessionStore("/tmp/nonexistent-sessions")
+    with pytest.raises(ValueError):
+        AgentSession(workdir=workdir, llm=FakeLLM([]), store=store, resume=True)
+
+
+def test_agent_load_session_switches_conversation(workdir, tmp_path):
+    from code_agent.session import SessionStore
+    store = SessionStore(str(tmp_path / "sessions"))
+    sid = store.create("other")
+    store.save(sid, [{"role": "user", "content": "other history"}])
+    llm = FakeLLM([])
+    session = AgentSession(workdir=workdir, llm=llm, store=store)
+    session.load_session(sid)
+    assert session.session_id == sid
+    contents = [m.get("content") for m in session.conversation.messages]
+    assert "other history" in contents
     assert session.conversation.is_valid()
