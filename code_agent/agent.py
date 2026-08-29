@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from code_agent.context import Conversation
+from code_agent.llm import LLMError
 from code_agent.tools import TOOL_SCHEMAS, ToolResult, execute
 
 SYSTEM_PROMPT = """You are a coding agent. You work inside a local workspace and complete software tasks autonomously.
@@ -57,11 +58,28 @@ class AgentSession:
     def run_task(self, task: str, on_delta: Callable[[str], None] | None = None) -> RunResult:
         self.conversation.add_user(task)
         consecutive_failures = 0
+        llm_error_count = 0
         for iteration in range(1, self.max_iterations + 1):
             if self.debug:
                 print(f"[agent] iteration {iteration}")
             messages = self.conversation.build_messages(self.max_context_tokens)
-            response = self.llm.chat(messages, tools=TOOL_SCHEMAS, on_delta=on_delta)
+            try:
+                response = self.llm.chat(messages, tools=TOOL_SCHEMAS, on_delta=on_delta)
+            except LLMError as e:
+                llm_error_count += 1
+                if llm_error_count >= MAX_CONSECUTIVE_FAILURES:
+                    return RunResult(
+                        final_text="",
+                        iterations=iteration,
+                        finished=False,
+                        reason=f"llm error: {e}",
+                    )
+                self.conversation.add_user(
+                    f"[system] An LLM error occurred: {e}. "
+                    "Please reply in plain text without tool calls, or continue if possible."
+                )
+                continue
+            llm_error_count = 0
             self.conversation.add_assistant(response.content, response.tool_calls or None)
             if not response.tool_calls:
                 return RunResult(

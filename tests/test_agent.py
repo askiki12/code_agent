@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from code_agent.agent import AgentSession
-from code_agent.llm import LLMResponse, ToolCall
+from code_agent.llm import LLMError, LLMResponse, ToolCall
 
 
 class FakeLLM:
@@ -12,6 +12,20 @@ class FakeLLM:
     def chat(self, messages, tools=None, on_delta=None):
         self.calls.append(messages)
         return self.responses.pop(0)
+
+
+class _RaisingLLM(FakeLLM):
+    def __init__(self, responses, raise_on):
+        super().__init__(responses)
+        self.raise_on = raise_on
+
+    def chat(self, messages, tools=None, on_delta=None):
+        self.calls.append(messages)
+        if self.raise_on is not None:
+            if self.raise_on <= 0:
+                return self.responses.pop(0)
+            self.raise_on -= 1
+        raise LLMError("simulated llm error")
 
 
 def _read_call(pid, path):
@@ -68,3 +82,29 @@ def test_agent_recovers_after_failure(workdir):
     result = session.run_task("recover")
     assert result.finished and result.final_text == "done"
     assert result.iterations == 3
+
+
+def test_agent_stops_cleanly_on_persistent_llm_error(workdir):
+    llm = _RaisingLLM(responses=[], raise_on=None)
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=10)
+    result = session.run_task("boom")
+    assert not result.finished
+    assert result.reason.startswith("llm error")
+    assert result.iterations == 3
+
+
+def test_agent_recovers_after_transient_llm_error(workdir):
+    Path(workdir, "a.txt").write_text("hello", encoding="utf-8")
+    llm = _RaisingLLM(
+        responses=[
+            _read_call("c1", "a.txt"),
+            LLMResponse(content="done", tool_calls=[]),
+        ],
+        raise_on=1,
+    )
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5)
+    result = session.run_task("recover")
+    assert result.finished and result.reason == "complete"
+    assert result.final_text == "done"
+    assert result.iterations == 3
+    assert session.conversation.is_valid()
