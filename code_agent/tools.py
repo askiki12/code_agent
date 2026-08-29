@@ -510,7 +510,7 @@ def _grep(args: dict, workdir: str) -> ToolResult:
                 truncated = True
                 break
     else:
-        base = os.path.dirname(path) or path
+        base = os.path.dirname(path)
         rules = _initial_gitignore_stack(base, workdir)
         if _gitignore_ignored(rules, path, False):
             return ToolResult(ok=True, output="(no matches)")
