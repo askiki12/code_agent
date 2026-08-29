@@ -916,7 +916,7 @@ git commit -m "feat: .code_agent 加入受保护路径并 gitignore（ADR-012）
 - 交互模式斜杠命令：`/new`（新建）、`/list`（列出）、`/resume <id>`（恢复）、`/exit`（退出）。
 ```
 
-§3 测试目录说明更新用例数为 `103`（"当前 82 个用例" → "当前 103 个用例"），并加 `test_session.py` 说明行：
+§3 测试目录说明更新用例数为 `104`（"当前 82 个用例" → "当前 104 个用例"），并加 `test_session.py` 说明行：
 
 ```markdown
   - `test_session.py`：SessionStore 创建/保存/加载/列表/坏文件容错。
@@ -952,7 +952,7 @@ git commit -m "feat: .code_agent 加入受保护路径并 gitignore（ADR-012）
 - [ ] **Step 6: 验证与提交**
 
 Run: `cd code_agent && uv run pytest tests/ -q`
-Expected: 103 passed
+Expected: 104 passed
 
 Run: `cd code_agent && uv run python -m code_agent --help`
 Expected: 含 `--list-sessions` / `--resume`
@@ -1023,6 +1023,6 @@ git grep -iE "sk-[a-zA-Z0-9]{10,}"
 git status
 ```
 
-Expected: 103 passed；凭据无命中。若冒烟无需代码修改，`git status` 干净则跳过提交，在报告中说明。
+Expected: 104 passed；凭据无命中。若冒烟无需代码修改，`git status` 干净则跳过提交，在报告中说明。
 
 > 若无真实 API key 或网络不可用，改为在演示脚本中演示，并在报告标注"冒烟待真实验证"。
