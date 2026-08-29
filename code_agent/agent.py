@@ -10,6 +10,7 @@ from code_agent.context import Conversation
 from code_agent.llm import LLMError
 from code_agent.permissions import Policy
 from code_agent.session import SessionStore, _make_title
+from code_agent.skills import SkillRegistry
 from code_agent.tools import TOOL_SCHEMAS, ToolResult, execute
 from code_agent.workspace import Workspace
 
@@ -35,6 +36,19 @@ Rules:
 MAX_ITERATIONS_DEFAULT = 20
 MAX_CONSECUTIVE_FAILURES = 3
 
+_USE_SKILL_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "use_skill",
+        "description": "Load a skill's instructions into context. Returns the skill content; follow it.",
+        "parameters": {
+            "type": "object",
+            "properties": {"name": {"type": "string", "description": "Skill name"}},
+            "required": ["name"],
+        },
+    },
+}
+
 
 @dataclass
 class RunResult:
@@ -59,6 +73,7 @@ class AgentSession:
         workspace: Workspace | None = None,
         policy: Policy | None = None,
         interact: bool = False,
+        skills: SkillRegistry | None = None,
     ) -> None:
         self.workdir = workdir
         self.llm = llm
@@ -70,13 +85,23 @@ class AgentSession:
         self.policy = policy
         self.interact = interact
         self.session_id = session_id
+        self.skills = skills
+        skills_section = ""
+        if skills is not None:
+            entries = "\n".join(f"- {s.name}: {s.description}" for s in skills.scan())
+            if entries:
+                skills_section = (
+                    "\n\nAvailable skills:\n" + entries
+                    + "\nUse the use_skill tool to load a skill when the task matches."
+                )
+        self._system_prompt = SYSTEM_PROMPT + skills_section
         if resume:
             if session_id is None:
                 raise ValueError("resume=True requires session_id")
             self.load_session(session_id)
         else:
             self.conversation = Conversation()
-            self.conversation.add_system(SYSTEM_PROMPT)
+            self.conversation.add_system(self._system_prompt)
 
     def run_task(self, task: str, on_delta: Callable[[str], None] | None = None) -> RunResult:
         self.conversation.add_user(task)
@@ -88,7 +113,8 @@ class AgentSession:
                     print(f"[agent] iteration {iteration}")
                 messages = self.conversation.build_messages(self.max_context_tokens)
                 try:
-                    response = self.llm.chat(messages, tools=TOOL_SCHEMAS, on_delta=on_delta)
+                    tools = TOOL_SCHEMAS + ([_USE_SKILL_SCHEMA] if self.skills is not None else [])
+                    response = self.llm.chat(messages, tools=tools, on_delta=on_delta)
                 except LLMError as e:
                     llm_error_count += 1
                     if llm_error_count >= MAX_CONSECUTIVE_FAILURES:
@@ -154,7 +180,7 @@ class AgentSession:
 
     def new_session(self) -> None:
         self.conversation = Conversation()
-        self.conversation.add_system(SYSTEM_PROMPT)
+        self.conversation.add_system(self._system_prompt)
         self.session_id = None
 
     def load_session(self, session_id: str) -> None:
@@ -162,10 +188,12 @@ class AgentSession:
             raise ValueError("no session store configured")
         _, messages = self.store.load(session_id)
         text = "\n".join(json.dumps(m, ensure_ascii=False) for m in messages)
-        self.conversation = Conversation.from_jsonl(text, system_prompt=SYSTEM_PROMPT)
+        self.conversation = Conversation.from_jsonl(text, system_prompt=self._system_prompt)
         self.session_id = session_id
 
     def _run_tool(self, tc) -> ToolResult:
+        if tc.name == "use_skill" and self.skills is not None:
+            return self._use_skill(tc.arguments)
         if self.policy is not None:
             result = self.policy.check(tc.name, tc.arguments, interact=self.interact)
             if result.decision == "deny":
@@ -175,3 +203,12 @@ class AgentSession:
             return execute(tc.name, tc.arguments, self.workdir)
         except Exception as e:  # noqa: BLE001 - last-resort guard
             return ToolResult(ok=False, output=f"tool crash: {type(e).__name__}: {e}")
+
+    def _use_skill(self, arguments: dict) -> ToolResult:
+        name = arguments.get("name", "")
+        if not name:
+            return ToolResult(ok=False, output="skill name is required")
+        content = self.skills.load(name)
+        if content is None:
+            return ToolResult(ok=False, output=f"skill not found: {name}")
+        return ToolResult(ok=True, output=content)

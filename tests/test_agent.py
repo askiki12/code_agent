@@ -10,9 +10,11 @@ class FakeLLM:
     def __init__(self, responses):
         self.responses = list(responses)
         self.calls = []
+        self.tools_calls = []
 
     def chat(self, messages, tools=None, on_delta=None):
         self.calls.append(messages)
+        self.tools_calls.append(tools)
         return self.responses.pop(0)
 
 
@@ -249,3 +251,66 @@ def test_agent_doom_loop_blocks_repeated_call(workdir):
     assert not result.finished and result.reason == "max_iterations"
     tool_msgs = [m for m in session.conversation.messages if m["role"] == "tool"]
     assert any("doom_loop" in m["content"] for m in tool_msgs)
+
+
+def _write_skill(root, name, desc, body):
+    import os
+    d = os.path.join(root, ".code_agent", "skills", name)
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write(f"---\nname: {name}\ndescription: {desc}\n---\n{body}\n")
+
+
+def test_agent_with_skills_injects_prompt(workdir, tmp_path):
+    from code_agent.skills import SkillRegistry
+    proj = str(tmp_path / "proj")
+    _write_skill(proj, "code-review", "review code", "step1")
+    reg = SkillRegistry(proj, str(tmp_path / "user"))
+    llm = FakeLLM([LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=2, skills=reg)
+    session.run_task("hi")
+    system = llm.calls[0][0]["content"]
+    assert "Available skills" in system and "code-review" in system
+    assert llm.tools_calls[0] is not None and any(
+        tc["function"]["name"] == "use_skill" for tc in llm.tools_calls[0]
+    )
+
+
+def test_agent_use_skill_loads_content(workdir, tmp_path):
+    from code_agent.skills import SkillRegistry
+    proj = str(tmp_path / "proj")
+    _write_skill(proj, "code-review", "review code", "review steps here")
+    reg = SkillRegistry(proj, str(tmp_path / "user"))
+    skill_call = LLMResponse(
+        content="", tool_calls=[ToolCall(id="c1", name="use_skill", arguments={"name": "code-review"})]
+    )
+    llm = FakeLLM([skill_call, LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5, skills=reg)
+    result = session.run_task("review the code")
+    assert result.finished
+    tool_msgs = [m for m in session.conversation.messages if m["role"] == "tool"]
+    assert tool_msgs and "review steps here" in tool_msgs[0]["content"]
+
+
+def test_agent_use_skill_not_found(workdir, tmp_path):
+    from code_agent.skills import SkillRegistry
+    reg = SkillRegistry(str(tmp_path / "proj"), str(tmp_path / "user"))
+    skill_call = LLMResponse(
+        content="", tool_calls=[ToolCall(id="c1", name="use_skill", arguments={"name": "nope"})]
+    )
+    llm = FakeLLM([skill_call, LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5, skills=reg)
+    result = session.run_task("do skill")
+    assert result.finished
+    tool_msgs = [m for m in session.conversation.messages if m["role"] == "tool"]
+    assert tool_msgs and "skill not found" in tool_msgs[0]["content"]
+
+
+def test_agent_no_skills_no_skill_tool(workdir):
+    llm = FakeLLM([LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=2)
+    session.run_task("hi")
+    assert all(
+        t is None or not any(tc["function"]["name"] == "use_skill" for tc in t)
+        for t in llm.tools_calls
+    )
