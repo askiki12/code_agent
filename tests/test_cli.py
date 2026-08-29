@@ -181,6 +181,47 @@ def test_main_policy_passed_and_rules_applied(monkeypatch, tmp_path):
     assert policy.check("read_file", {"path": "a"}).decision == "allow"
 
 
+def test_main_passes_skill_registry_when_skills_present(monkeypatch, tmp_path):
+    monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
+    proj = str(tmp_path)
+    skill_dir = os.path.join(proj, ".code_agent", "skills", "greeting")
+    os.makedirs(skill_dir, exist_ok=True)
+    with open(os.path.join(skill_dir, "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write("---\nname: greeting\ndescription: 用中文问候\n---\n技能已加载：greeting\n")
+    captured = {}
+
+    class _CaptureSession:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def run_task(self, task, on_delta=None):
+            return RunResult(final_text="ok", iterations=1, finished=True, reason="complete")
+
+    monkeypatch.setattr("code_agent.cli.AgentSession", _CaptureSession)
+    rc = main(["--prompt", "x", "--workdir", proj])
+    assert rc == 0
+    skills = captured.get("skills")
+    assert skills is not None
+    assert [s.name for s in skills.scan()] == ["greeting"]
+
+
+def test_main_no_skills_passes_none(monkeypatch, tmp_path):
+    monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
+    captured = {}
+
+    class _CaptureSession:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def run_task(self, task, on_delta=None):
+            return RunResult(final_text="ok", iterations=1, finished=True, reason="complete")
+
+    monkeypatch.setattr("code_agent.cli.AgentSession", _CaptureSession)
+    rc = main(["--prompt", "x", "--workdir", str(tmp_path)])
+    assert rc == 0
+    assert captured.get("skills") is None
+
+
 def test_main_interactive_policy_interact(monkeypatch, tmp_path):
     monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
     captured = {}

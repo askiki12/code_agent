@@ -9,6 +9,7 @@ from code_agent.agent import AgentSession
 from code_agent.llm import LLMClient
 from code_agent.permissions import Policy
 from code_agent.session import SessionStore
+from code_agent.skills import SkillRegistry
 from code_agent.workspace import Workspace
 
 _DEFAULTS = {
@@ -128,6 +129,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     llm = _make_client(args)
     policy = Policy(allow=args.allow, deny=args.deny, ask=args.ask)
+    skills = SkillRegistry(workdir)
     try:
         session = AgentSession(
             workdir=workdir,
@@ -141,6 +143,7 @@ def main(argv: list[str] | None = None) -> int:
             workspace=workspace,
             policy=policy,
             interact=args.interactive,
+            skills=skills if skills.scan() else None,
         )
     except KeyError:
         print(f"session not found: {args.resume}", file=sys.stderr)
