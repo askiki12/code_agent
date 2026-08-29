@@ -8,9 +8,10 @@
 # 环境（uv，隔离且可复现）
 uv sync
 
-export CODE_AGENT_BASE_URL="https://api.example.com/v1"
-export CODE_AGENT_API_KEY="sk-..."   # 仅环境变量，切勿入库
-export CODE_AGENT_MODEL="gpt-4o-mini"
+# 配置凭据：复制模板为 .env 并填入真实值（.env 已 gitignore，不会入库）
+cp .env.example .env
+#   编辑 .env：CODE_AGENT_BASE_URL / CODE_AGENT_API_KEY / CODE_AGENT_MODEL
+#   或用系统环境变量（优先级更高）：export CODE_AGENT_API_KEY=sk-...
 
 # 一次性任务
 uv run python -m code_agent --prompt "把 tests/test_tools.py 里的测试全部跑通"

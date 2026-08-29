@@ -14,6 +14,26 @@ _DEFAULTS = {
 }
 
 
+def _load_dotenv(path: str = ".env") -> None:
+    """Load KEY=VALUE pairs from an optional .env file (stdlib, no overrides)."""
+    if not os.path.isfile(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export "):].strip()
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="code_agent", description="A self-built coding agent"
@@ -53,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.prompt and not args.interactive:
         parser.print_help()
         return 1
+    _load_dotenv()
     workdir = os.path.abspath(args.workdir)
     llm = _make_client(args)
     session = AgentSession(

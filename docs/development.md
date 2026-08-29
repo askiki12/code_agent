@@ -22,13 +22,18 @@ uv run python -m code_agent --help
 - 依赖声明：运行依赖在 `pyproject.toml` 的 `[project]`，测试依赖在 `[dependency-groups].dev`（pytest）。
 - 新增依赖后：改 `pyproject.toml` → `uv sync`（自动更新 `uv.lock`）。
 - 不要求系统 Python 预装 `requests`/`pytest`；环境由 uv 完全隔离。
-- 配置 API：设置环境变量（示例，勿提交真实 key）：
+- 配置 API（推荐 `.env`，已 gitignore，不会入库）：
 
 ```bash
-export CODE_AGENT_BASE_URL="https://api.example.com/v1"
-export CODE_AGENT_API_KEY="sk-..."
-export CODE_AGENT_MODEL="gpt-4o-mini"   # 或 deepseek-chat 等
+# 复制模板并填入真实值（系统环境变量优先于 .env；命令行参数优先于两者）
+cp .env.example .env
+# 编辑 .env：
+#   CODE_AGENT_BASE_URL=https://api.example.com/v1
+#   CODE_AGENT_API_KEY=sk-...        # 真实 key，勿外泄
+#   CODE_AGENT_MODEL=gpt-4o-mini     # 或 deepseek-chat 等
 ```
+
+  也可以在 shell 中导出同名环境变量，效果相同（优先级更高）。
 
 ## 2. 运行方式
 

@@ -1,7 +1,39 @@
+import os
+
 import pytest
 
-from code_agent.cli import _build_parser, _make_client, main
+from code_agent.cli import _build_parser, _load_dotenv, _make_client, main
 from code_agent.agent import RunResult
+
+
+def test_load_dotenv_sets_missing_keys(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        '# comment\nCODE_AGENT_BASE_URL="https://api.example.com/v1"\n'
+        "CODE_AGENT_API_KEY='sk-secret'\nexport CODE_AGENT_MODEL=gpt-4o-mini\n"
+        "MALFORMED_LINE\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("CODE_AGENT_API_KEY", raising=False)
+    monkeypatch.delenv("CODE_AGENT_BASE_URL", raising=False)
+    monkeypatch.delenv("CODE_AGENT_MODEL", raising=False)
+    _load_dotenv(str(env_file))
+    assert os.environ["CODE_AGENT_BASE_URL"] == "https://api.example.com/v1"
+    assert os.environ["CODE_AGENT_API_KEY"] == "sk-secret"
+    assert os.environ["CODE_AGENT_MODEL"] == "gpt-4o-mini"
+
+
+def test_load_dotenv_does_not_override_existing_env(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env"
+    env_file.write_text("CODE_AGENT_API_KEY=from-file\n", encoding="utf-8")
+    monkeypatch.setenv("CODE_AGENT_API_KEY", "from-env")
+    _load_dotenv(str(env_file))
+    assert os.environ["CODE_AGENT_API_KEY"] == "from-env"
+
+
+def test_load_dotenv_missing_file(tmp_path):
+    _load_dotenv(str(tmp_path / "does-not-exist.env"))
+    assert True
 
 
 def test_make_client_missing_key(monkeypatch):
