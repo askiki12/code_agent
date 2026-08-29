@@ -62,10 +62,18 @@ def test_parser_defaults():
 class _FakeSession:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
+        self.store = kwargs.get("store")
+        self.session_id = None
 
     def run_task(self, task, on_delta=None):
         on_delta("hello")
         return RunResult(final_text="hello", iterations=1, finished=True, reason="complete")
+
+    def new_session(self):
+        self.session_id = None
+
+    def load_session(self, session_id):
+        self.session_id = session_id
 
 
 def test_main_oneshot(monkeypatch, capsys):
@@ -74,3 +82,35 @@ def test_main_oneshot(monkeypatch, capsys):
     rc = main(["--prompt", "do it", "--workdir", "/tmp"])
     assert rc == 0
     assert "hello" in capsys.readouterr().out
+
+
+def test_main_list_sessions(monkeypatch, capsys, tmp_path):
+    from code_agent.session import SessionStore
+    monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
+    store = SessionStore(str(tmp_path / ".code_agent" / "sessions"))
+    sid = store.create("hello task")
+    rc = main(["--list-sessions", "--workdir", str(tmp_path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert sid in out and "hello task" in out
+
+
+def test_main_resume_not_found(monkeypatch, capsys, tmp_path):
+    monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
+    rc = main(["--resume", "code_agent-nonexistent", "--prompt", "x", "--workdir", str(tmp_path)])
+    assert rc == 1
+    assert "not found" in capsys.readouterr().err
+
+
+def test_main_interactive_slash_commands(monkeypatch, capsys, tmp_path):
+    from code_agent.session import SessionStore
+    monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
+    store = SessionStore(str(tmp_path / ".code_agent" / "sessions"))
+    sid = store.create("existing")
+    store.save(sid, [{"role": "user", "content": "hi"}])
+    inputs = iter(["/list", f"/resume {sid}", "/exit"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    monkeypatch.setattr("code_agent.cli.AgentSession", _FakeSession)
+    rc = main(["--interactive", "--workdir", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert sid in out and rc == 0

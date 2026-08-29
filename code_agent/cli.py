@@ -7,6 +7,7 @@ import sys
 
 from code_agent.agent import AgentSession
 from code_agent.llm import LLMClient
+from code_agent.session import SessionStore
 
 _DEFAULTS = {
     "base_url": "https://api.openai.com/v1",
@@ -40,6 +41,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--prompt", help="Run a one-shot task and exit")
     parser.add_argument("-i", "--interactive", action="store_true", help="Start an interactive session")
+    parser.add_argument("--list-sessions", action="store_true", help="List saved sessions and exit")
+    parser.add_argument("--resume", help="Resume a session by id")
     parser.add_argument("--workdir", default=".", help="Working directory (default: current dir)")
     parser.add_argument("--base-url", help="OpenAI-compatible base URL")
     parser.add_argument("--api-key", help="API key (default: env CODE_AGENT_API_KEY)")
@@ -67,26 +70,72 @@ def _run(session: AgentSession, task: str) -> None:
         print(f"\n[agent] stopped: {result.reason}", file=sys.stderr)
 
 
+def _make_store(workdir: str) -> SessionStore:
+    return SessionStore(os.path.join(workdir, ".code_agent", "sessions"))
+
+
+def _handle_command(command: str, session, store: SessionStore) -> bool:
+    parts = command.split(maxsplit=1)
+    cmd = parts[0]
+    if cmd == "/new":
+        session.new_session()
+        print("New session started.")
+        return True
+    if cmd == "/list":
+        for s in store.list_sessions():
+            print(f"{s['id']}  {s['title'] or ''}  ({s['message_count']} msgs)")
+        return True
+    if cmd == "/resume":
+        sid = parts[1] if len(parts) > 1 else ""
+        if not sid:
+            print("usage: /resume <session-id>")
+            return True
+        try:
+            session.load_session(sid)
+            print(f"Resumed session {sid}.")
+        except KeyError:
+            print(f"session not found: {sid}", file=sys.stderr)
+        return True
+    if cmd == "/exit":
+        return False
+    print(f"unknown command: {cmd}")
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
-    if not args.prompt and not args.interactive:
+    if not args.prompt and not args.interactive and not args.list_sessions:
         parser.print_help()
         return 1
     _load_dotenv()
     workdir = os.path.abspath(args.workdir)
+    store = _make_store(workdir)
+    if args.list_sessions:
+        if args.prompt or args.interactive:
+            print("note: --list-sessions overrides --prompt/--interactive", file=sys.stderr)
+        for s in store.list_sessions():
+            print(f"{s['id']}  {s['title'] or ''}  ({s['message_count']} msgs, {s['updated_at']})")
+        return 0
     llm = _make_client(args)
-    session = AgentSession(
-        workdir=workdir,
-        llm=llm,
-        max_iterations=args.max_iterations,
-        max_context_tokens=args.max_context_tokens,
-        debug=args.debug,
-    )
+    try:
+        session = AgentSession(
+            workdir=workdir,
+            llm=llm,
+            max_iterations=args.max_iterations,
+            max_context_tokens=args.max_context_tokens,
+            debug=args.debug,
+            store=store,
+            session_id=args.resume,
+            resume=args.resume is not None,
+        )
+    except KeyError:
+        print(f"session not found: {args.resume}", file=sys.stderr)
+        return 1
     if args.prompt:
         _run(session, args.prompt)
         return 0
-    print("Interactive mode. Type 'exit' or 'quit' to leave.")
+    print("Interactive mode. Type 'exit', 'quit' or '/exit' to leave. Commands: /new /list /resume <id>")
     while True:
         try:
             task = input("> ")
@@ -95,7 +144,13 @@ def main(argv: list[str] | None = None) -> int:
         task = task.strip()
         if not task:
             continue
-        if task.lower() in {"exit", "quit"}:
+        if task.lower() in {"exit", "quit"} or task == "/exit":
             break
+        if task.startswith("/"):
+            if not _handle_command(task, session, store):
+                break
+            continue
         _run(session, task)
+        if session.session_id:
+            print(f"[session {session.session_id}]")
     return 0
