@@ -284,6 +284,19 @@ def _run_command(args: dict, workdir: str) -> ToolResult:
     )
 
 
+def _has_symlink_component(match: str, base: str) -> bool:
+    try:
+        rel = os.path.relpath(match, base)
+    except ValueError:
+        return True
+    cur = base
+    for part in rel.split(os.sep):
+        cur = os.path.join(cur, part)
+        if os.path.islink(cur):
+            return True
+    return False
+
+
 def _glob(args: dict, workdir: str) -> ToolResult:
     pattern_src = args.get("pattern", "")
     if not pattern_src:
@@ -292,18 +305,20 @@ def _glob(args: dict, workdir: str) -> ToolResult:
     if not os.path.isdir(path):
         return ToolResult(ok=False, output=f"directory not found: {path}")
     matches: list[str] = []
-    for m in globlib.glob(os.path.join(path, pattern_src), recursive=True):
+    truncated = False
+    for m in globlib.iglob(os.path.join(path, pattern_src), recursive=True):
         if not os.path.isfile(m):
             continue
         rel = os.path.relpath(m, workdir)
         if _is_protected_path(rel):
             continue
+        if _has_symlink_component(m, path):
+            continue
         matches.append(rel)
+        if len(matches) >= MAX_SEARCH_RESULTS:
+            truncated = True
+            break
     matches.sort()
-    truncated = False
-    if len(matches) > MAX_SEARCH_RESULTS:
-        matches = matches[:MAX_SEARCH_RESULTS]
-        truncated = True
     if not matches:
         return ToolResult(ok=True, output="(no matches)")
     out = "\n".join(matches)
@@ -495,6 +510,10 @@ def _grep(args: dict, workdir: str) -> ToolResult:
                 truncated = True
                 break
     else:
+        base = os.path.dirname(path) or path
+        rules = _initial_gitignore_stack(base, workdir)
+        if _gitignore_ignored(rules, path, False):
+            return ToolResult(ok=True, output="(no matches)")
         if include and not fnmatch.fnmatch(os.path.basename(path), include):
             return ToolResult(ok=True, output="(no matches)")
         process(path, os.path.relpath(path, workdir))

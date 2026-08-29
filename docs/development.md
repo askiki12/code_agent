@@ -64,7 +64,7 @@ uv run python -m code_agent --interactive
 - 框架：`pytest`（经 `uv run`）。
 - 目录：`tests/`（当前 79 个用例，全部离线，无需 API key）。
   - `test_smoke.py`：包可导入、版本号。
-  - `test_tools.py`：五个工具的本地执行用例（含错误/截断/路径边界/受保护路径）。
+  - `test_tools.py`：七个工具的本地执行用例（含 glob/grep）。
   - `test_llm_parse.py`：tool_calls 响应解析（含异常格式）。
   - `test_context.py`：消息维护、token 估算、裁剪后结构一致性。
   - `test_agent.py`：用 mock 模型跑通完整循环（含终止条件与错误恢复，不含真实 API）。

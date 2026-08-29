@@ -174,6 +174,14 @@ def test_glob_skips_protected(workdir):
     assert r.ok and r.output == "(no matches)" and "a.py" not in r.output
 
 
+def test_glob_skips_symlinked_dir(workdir):
+    real = os.path.join(workdir, "real")
+    _write(os.path.join(real, "a.py"), "x")
+    os.symlink(real, os.path.join(workdir, "link"))
+    r = execute("glob", {"pattern": "**/*.py"}, workdir)
+    assert r.ok and "real/a.py" in r.output and "link" not in r.output
+
+
 def test_glob_no_match(workdir):
     r = execute("glob", {"pattern": "*.xyz"}, workdir)
     assert r.ok and "no matches" in r.output
@@ -258,6 +266,13 @@ def test_grep_single_file(workdir):
     assert r.ok and "sub/a.py:1:foo" in r.output
 
 
+def test_grep_single_file_gitignored(workdir):
+    _write(os.path.join(workdir, ".gitignore"), "a.py\n")
+    _write(os.path.join(workdir, "a.py"), "secret\n")
+    r = execute("grep", {"pattern": "secret", "path": "a.py"}, workdir)
+    assert r.ok and "(no matches)" in r.output
+
+
 def test_grep_invalid_regex(workdir):
     r = execute("grep", {"pattern": "("}, workdir)
     assert not r.ok and "invalid regex" in r.output
@@ -293,6 +308,14 @@ def test_grep_gitignore_skips(workdir):
     _write(os.path.join(workdir, "kept.txt"), "secret\n")
     r = execute("grep", {"pattern": "secret", "output_mode": "files_with_matches"}, workdir)
     assert r.ok and r.output == "kept.txt"
+
+
+def test_grep_gitignore_nested(workdir):
+    _write(os.path.join(workdir, "sub", ".gitignore"), "skipme.txt\n")
+    _write(os.path.join(workdir, "sub", "skipme.txt"), "secret\n")
+    _write(os.path.join(workdir, "sub", "keep.txt"), "secret\n")
+    r = execute("grep", {"pattern": "secret", "output_mode": "files_with_matches"}, workdir)
+    assert r.ok and r.output == "sub/keep.txt"
 
 
 def test_grep_gitignore_comment_and_dir(workdir):
