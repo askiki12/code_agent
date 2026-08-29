@@ -1,0 +1,81 @@
+# 开发与验证流程
+
+> 描述如何运行、测试、验证和演示本项目，随开发逐步完善。
+
+## 1. 环境准备
+
+- Python 3.11+。
+- 安装依赖：`pip install -r requirements.txt`（待建立）。
+- 配置 API：设置环境变量（示例，勿提交真实 key）：
+
+```bash
+export CODE_AGENT_BASE_URL="https://api.example.com/v1"
+export CODE_AGENT_API_KEY="sk-..."
+export CODE_AGENT_MODEL="gpt-4o-mini"   # 或 deepseek-chat 等
+```
+
+## 2. 运行方式
+
+一次性任务：
+
+```bash
+python -m code_agent --prompt "把这个目录里所有测试跑通"
+```
+
+交互式对话：
+
+```bash
+python -m code_agent --interactive
+```
+
+常用参数（待实现）：
+
+- `--workdir <dir>`：agent 工作目录（默认当前目录）。
+- `--model <model>` / `--base-url <url>`：覆盖环境变量。
+- `--max-iterations <n>`：最大循环轮次。
+- `--debug`：输出详细日志。
+
+## 3. 测试
+
+- 框架：`pytest`。
+- 目录：`tests/`。
+  - `test_tools.py`：五个工具的本地执行用例（含错误/截断/路径边界）。
+  - `test_llm_parse.py`：tool_calls 响应解析（含异常格式）。
+  - `test_context.py`：消息维护、token 估算、裁剪后结构一致性。
+  - `test_agent.py`：用**录制 mock 模型**跑通完整循环（不含真实 API）。
+- 运行全部测试：
+
+```bash
+python -m pytest tests/ -v
+```
+
+## 4. 验证清单（每阶段合并前）
+
+- [ ] `python -m pytest tests/ -v` 全部通过
+- [ ] `python -m code_agent --help` 正常输出
+- [ ] 一次真实 API 冒烟任务（如修改一个测试文件并跑通）
+- [ ] 无真实凭据被写入任何提交的文件（用 `git grep -i "sk-"` 复核）
+
+## 5. 提交规范
+
+- 提交历史保留完整，不压缩、不改写（评分依据）。
+- 每次提交包含有意义的 message，可关联到 `docs/design.md` 开发路线中的步骤。
+- 截止时间 2026-09-02 24:00 后不再推送。
+
+## 6. 演示准备
+
+- 演示任务建议：一个**真实且可快速验证**的编程任务（如：修一个 bug 并跑通测试）。
+- 视频脚本要点：
+  1. 展示一次性任务输入与流式输出；
+  2. 展示 agent 自主调用 read_file / edit_file / run_command；
+  3. 最终用命令验证结果（如跑通测试）。
+- 产出物：`README.txt`（≤1000 汉字）+ 演示 mp4（≤200MB）。
+
+## 7. 已知风险与对策
+
+| 风险 | 对策 |
+|---|---|
+| 模型 tool_calls 格式不标准 | `llm.py` 健壮解析 + `test_llm_parse.py` |
+| 长任务上下文溢出 | 预算裁剪策略（见 `context-management.md`） |
+| 命令工具卡死 | 超时机制 + 无 TTY |
+| 误写真实 API key 进仓库 | 环境变量唯一来源 + 提交前 grep 复核 |
