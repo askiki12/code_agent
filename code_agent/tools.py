@@ -1,8 +1,10 @@
 """Tool definitions and local executors (all self-implemented)."""
 from __future__ import annotations
 
+import fnmatch
 import glob as globlib
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 
@@ -182,6 +184,22 @@ TOOL_SCHEMAS = [
         },
         ["pattern"],
     ),
+    _schema(
+        "grep",
+        "Search file contents with a regex. Skips .git, protected and gitignored paths.",
+        {
+            "pattern": {"type": "string", "description": "Regex to search"},
+            "path": {"type": "string", "description": "File or directory (defaults to workdir)"},
+            "include": {"type": "string", "description": "fnmatch on filename, e.g. '*.py'"},
+            "ignore_case": {"type": "boolean", "description": "Case-insensitive search"},
+            "output_mode": {
+                "type": "string",
+                "enum": ["content", "files_with_matches", "count"],
+                "description": "Default 'content'",
+            },
+        },
+        ["pattern"],
+    ),
 ]
 
 def _write_file(args: dict, workdir: str) -> ToolResult:
@@ -295,6 +313,127 @@ def _glob(args: dict, workdir: str) -> ToolResult:
     return ToolResult(ok=True, output=out, truncated=truncated or out_truncated)
 
 
+def _clip_line(line: str) -> str:
+    if len(line) <= MAX_GREP_LINE_CHARS:
+        return line
+    return line[:MAX_GREP_LINE_CHARS] + "..."
+
+
+def _walk_searchable(root: str, workdir: str, include: str | None):
+    """Yield (abs_path, rel_path) of searchable files under root. No symlink following."""
+    if not os.path.isdir(root):
+        return
+    try:
+        entries = sorted(os.scandir(root), key=lambda e: e.name)
+    except OSError:
+        return
+    for entry in entries:
+        abs_path = entry.path
+        rel = os.path.relpath(abs_path, workdir)
+        if _is_protected_path(rel):
+            continue
+        if entry.is_dir(follow_symlinks=False):
+            yield from _walk_searchable(abs_path, workdir, include)
+        elif entry.is_file(follow_symlinks=False):
+            if include and not fnmatch.fnmatch(entry.name, include):
+                continue
+            yield abs_path, rel
+
+
+def _grep(args: dict, workdir: str) -> ToolResult:
+    pattern_src = args.get("pattern", "")
+    if not pattern_src:
+        return ToolResult(ok=False, output="pattern is required")
+    output_mode = args.get("output_mode", "content")
+    if output_mode not in {"content", "files_with_matches", "count"}:
+        return ToolResult(ok=False, output=f"invalid output_mode: {output_mode}")
+    flags = re.IGNORECASE if args.get("ignore_case") else 0
+    try:
+        pattern = re.compile(pattern_src, flags)
+    except re.error as e:
+        return ToolResult(ok=False, output=f"invalid regex: {e}")
+    path = _resolve(args.get("path", "."), workdir)
+    if not os.path.exists(path):
+        return ToolResult(ok=False, output=f"path not found: {path}")
+    if _is_protected_path(path):
+        return ToolResult(ok=False, output=f"refusing to search protected path: {path}")
+    include = args.get("include")
+    is_dir = os.path.isdir(path)
+
+    hits: list[tuple[str, int, str]] = []
+    file_set: set[str] = set()
+    counts: dict[str, int] = {}
+    total = 0
+    truncated = False
+
+    def process(abs_path: str, rel: str) -> None:
+        nonlocal total, truncated
+        try:
+            with open(abs_path, "rb") as f:
+                head = f.read(8192)
+        except OSError:
+            return
+        if b"\x00" in head:
+            return
+        try:
+            with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+                lines = f.readlines()
+        except OSError:
+            return
+        file_matches: list[tuple[int, str]] = [
+            (lineno, line.rstrip("\n"))
+            for lineno, line in enumerate(lines, 1)
+            if pattern.search(line.rstrip("\n"))
+        ]
+        if not file_matches:
+            return
+        if output_mode == "count":
+            counts[rel] = len(file_matches)
+            total += 1
+            if total >= MAX_SEARCH_RESULTS:
+                truncated = True
+            return
+        file_set.add(rel)
+        if output_mode == "files_with_matches":
+            total += 1
+            if total >= MAX_SEARCH_RESULTS:
+                truncated = True
+            return
+        for lineno, line in file_matches:
+            if total >= MAX_SEARCH_RESULTS:
+                truncated = True
+                break
+            hits.append((rel, lineno, line))
+            total += 1
+
+    if is_dir:
+        for abs_path, rel in _walk_searchable(path, workdir, include):
+            process(abs_path, rel)
+            if total >= MAX_SEARCH_RESULTS:
+                break
+    else:
+        if include and not fnmatch.fnmatch(os.path.basename(path), include):
+            return ToolResult(ok=True, output="(no matches)")
+        process(path, os.path.relpath(path, workdir))
+
+    if output_mode == "count":
+        lines_out = [f"{rel}:{n}" for rel, n in sorted(counts.items())]
+    elif output_mode == "files_with_matches":
+        lines_out = sorted(file_set)
+    else:
+        lines_out = [
+            f"{rel}:{lineno}:{_clip_line(line)}"
+            for rel, lineno, line in sorted(hits)
+        ]
+    if not lines_out:
+        return ToolResult(ok=True, output="(no matches)")
+    out = "\n".join(lines_out)
+    if truncated:
+        out += f"\n...[search truncated: hit {MAX_SEARCH_RESULTS} result limit]"
+    out, out_truncated = truncate(out)
+    return ToolResult(ok=True, output=out, truncated=truncated or out_truncated)
+
+
 _HANDLERS = {
     "read_file": _read_file,
     "write_file": _write_file,
@@ -302,6 +441,7 @@ _HANDLERS = {
     "list_dir": _list_dir,
     "run_command": _run_command,
     "glob": _glob,
+    "grep": _grep,
 }
 
 

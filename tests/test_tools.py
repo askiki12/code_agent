@@ -72,7 +72,7 @@ def test_execute_unknown_tool(workdir):
 
 def test_tool_schemas_have_expected_names():
     names = {s["function"]["name"] for s in TOOL_SCHEMAS}
-    assert names == {"read_file", "write_file", "edit_file", "list_dir", "run_command", "glob"}
+    assert names == {"read_file", "write_file", "edit_file", "list_dir", "run_command", "glob", "grep"}
 
 
 def test_write_file(workdir):
@@ -190,3 +190,80 @@ def test_glob_output_truncated(workdir):
         _write(os.path.join(workdir, f"{name}{i:03d}.txt"), "x")
     r = execute("glob", {"pattern": "*.txt"}, workdir)
     assert r.ok and r.truncated and "TRUNCATED" in r.output
+
+
+def test_grep_content(workdir):
+    _write(os.path.join(workdir, "a.py"), "alpha\nbeta\n")
+    r = execute("grep", {"pattern": "beta"}, workdir)
+    assert r.ok and "a.py:2:beta" in r.output
+
+
+def test_grep_files_with_matches(workdir):
+    _write(os.path.join(workdir, "a.py"), "foo\n")
+    _write(os.path.join(workdir, "b.py"), "bar\n")
+    r = execute("grep", {"pattern": "foo", "output_mode": "files_with_matches"}, workdir)
+    assert r.ok and r.output == "a.py"
+
+
+def test_grep_count(workdir):
+    _write(os.path.join(workdir, "a.py"), "foo\nfoo\nbar\n")
+    r = execute("grep", {"pattern": "foo", "output_mode": "count"}, workdir)
+    assert r.ok and r.output == "a.py:2"
+
+
+def test_grep_ignore_case(workdir):
+    _write(os.path.join(workdir, "a.py"), "Hello\n")
+    r = execute("grep", {"pattern": "hello"}, workdir)
+    assert r.ok and "(no matches)" in r.output
+    r = execute("grep", {"pattern": "hello", "ignore_case": True}, workdir)
+    assert r.ok and "a.py:1:Hello" in r.output
+
+
+def test_grep_include(workdir):
+    _write(os.path.join(workdir, "a.py"), "foo\n")
+    _write(os.path.join(workdir, "b.txt"), "foo\n")
+    r = execute("grep", {"pattern": "foo", "include": "*.py"}, workdir)
+    assert r.ok and "a.py" in r.output and "b.txt" not in r.output
+
+
+def test_grep_sorted_multiple(workdir):
+    _write(os.path.join(workdir, "b.py"), "foo\n")
+    _write(os.path.join(workdir, "a.py"), "foo\nfoo\n")
+    r = execute("grep", {"pattern": "foo", "output_mode": "count"}, workdir)
+    assert r.ok and r.output.splitlines() == ["a.py:2", "b.py:1"]
+
+
+def test_grep_no_match(workdir):
+    _write(os.path.join(workdir, "a.py"), "abc\n")
+    r = execute("grep", {"pattern": "zzz"}, workdir)
+    assert r.ok and "(no matches)" in r.output
+
+
+def test_grep_binary_skipped(workdir):
+    _write(os.path.join(workdir, "a.bin"), "\x00\x01\x02")
+    r = execute("grep", {"pattern": "x", "output_mode": "files_with_matches"}, workdir)
+    assert r.ok and "(no matches)" in r.output
+
+
+def test_grep_protected_skipped(workdir):
+    _write(os.path.join(workdir, ".env"), "secret\n")
+    _write(os.path.join(workdir, "a.py"), "secret\n")
+    r = execute("grep", {"pattern": "secret", "output_mode": "files_with_matches"}, workdir)
+    assert r.ok and "a.py" in r.output and ".env" not in r.output
+
+
+def test_grep_single_file(workdir):
+    _write(os.path.join(workdir, "sub", "a.py"), "foo\n")
+    r = execute("grep", {"pattern": "foo", "path": "sub/a.py"}, workdir)
+    assert r.ok and "sub/a.py:1:foo" in r.output
+
+
+def test_grep_invalid_regex(workdir):
+    r = execute("grep", {"pattern": "("}, workdir)
+    assert not r.ok and "invalid regex" in r.output
+
+
+def test_grep_long_line_clipped(workdir):
+    _write(os.path.join(workdir, "a.py"), "x" * 300 + "\n")
+    r = execute("grep", {"pattern": "x"}, workdir)
+    assert r.ok and "a.py:1:" in r.output and "..." in r.output
