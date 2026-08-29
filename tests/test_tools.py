@@ -340,3 +340,21 @@ def test_grep_gitignore_anchored(workdir):
     _write(os.path.join(workdir, "sub", "root.txt"), "secret\n")
     r = execute("grep", {"pattern": "secret", "output_mode": "files_with_matches"}, workdir)
     assert r.ok and r.output == "sub/root.txt"
+
+
+def test_read_code_agent_protected(workdir):
+    _write(os.path.join(workdir, ".code_agent", "session.jsonl"), "secret\n")
+    r = execute("read_file", {"path": ".code_agent/session.jsonl"}, workdir)
+    assert not r.ok and "protected" in r.output
+
+
+def test_write_code_agent_protected(workdir):
+    r = execute("write_file", {"path": ".code_agent/x.txt", "content": "x"}, workdir)
+    assert not r.ok and "protected" in r.output
+
+
+def test_grep_skips_code_agent(workdir):
+    _write(os.path.join(workdir, ".code_agent", "session.jsonl"), "secret\n")
+    _write(os.path.join(workdir, "a.py"), "secret\n")
+    r = execute("grep", {"pattern": "secret", "output_mode": "files_with_matches"}, workdir)
+    assert r.ok and "a.py" in r.output and ".code_agent" not in r.output

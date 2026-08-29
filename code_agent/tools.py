@@ -42,6 +42,8 @@ def _is_protected_path(path: str) -> bool:
             return True
         if part.startswith(".env") and part != ".env.example":
             return True
+        if part == ".code_agent":
+            return True
     return False
 
 
