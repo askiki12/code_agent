@@ -69,6 +69,29 @@ class Conversation:
                 pending.discard(msg["tool_call_id"])
         return True
 
+    def to_jsonl(self) -> str:
+        lines = [json.dumps(m, ensure_ascii=False) for m in self._messages]
+        return "\n".join(lines) + "\n" if lines else ""
+
+    @classmethod
+    def from_jsonl(cls, text: str, system_prompt: str | None = None) -> "Conversation":
+        conv = cls()
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(obj, dict) or "role" not in obj:
+                continue
+            conv._messages.append(obj)
+        if system_prompt is not None:
+            conv._messages = [m for m in conv._messages if m.get("role") != "system"]
+            conv._messages.insert(0, {"role": "system", "content": system_prompt})
+        return conv
+
     def build_messages(self, max_tokens: int) -> list[dict[str, Any]]:
         system = [m for m in self._messages if m["role"] == "system"]
         rest = [m for m in self._messages if m["role"] != "system"]

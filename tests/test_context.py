@@ -76,3 +76,30 @@ def test_build_messages_grouping_no_orphan_tool():
     for i, m in enumerate(msgs):
         if m["role"] == "tool":
             assert msgs[i - 1]["role"] == "assistant"
+
+
+def test_to_jsonl_from_jsonl_roundtrip():
+    conv = Conversation()
+    conv.add_system("sys")
+    conv.add_user("u")
+    conv.add_assistant("", [_TC("c1", "read_file", {"path": "a"})])
+    conv.add_tool("c1", "read_file", "ok")
+    text = conv.to_jsonl()
+    restored = Conversation.from_jsonl(text)
+    assert restored.messages == conv.messages
+    assert restored.is_valid()
+
+
+def test_from_jsonl_reinjects_system():
+    conv = Conversation()
+    conv.add_system("old-system")
+    conv.add_user("u")
+    text = conv.to_jsonl()
+    restored = Conversation.from_jsonl(text, system_prompt="new-system")
+    assert restored.messages[0] == {"role": "system", "content": "new-system"}
+    assert sum(1 for m in restored.messages if m["role"] == "system") == 1
+
+
+def test_from_jsonl_skips_bad_lines():
+    conv = Conversation.from_jsonl('not-json\n{}\n{"role":"user","content":"u"}\n')
+    assert conv.messages == [{"role": "user", "content": "u"}]
