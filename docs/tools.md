@@ -4,7 +4,7 @@
 
 ## 1. 总则
 
-- 所有工具均为**本地执行**，不依赖任何服务端托管能力。当前工具数量共 7 个（read_file / write_file / edit_file / list_dir / run_command / glob / grep）。
+- 所有工具均为**本地执行**，不依赖任何服务端托管能力。当前工具数量共 8 个（read_file / write_file / edit_file / list_dir / run_command / glob / grep / web_fetch）。
 - 工具通过 OpenAI 原生 tool calling 接口暴露给模型。
 - 所有工具返回统一格式 `ToolResult`（纯文本，便于回填对话历史）。
 
@@ -97,6 +97,14 @@
 - 注：`*` 通配经 Python fnmatch 实现，会跨 `/`，与 git 严格语义略有差异（如 `/sub/*.txt` 会匹配 `sub/deep/x.txt`）。
 - 不支持（本期限制）：`**` 特殊模式、反斜杠转义完整集。
 
+### 3.8 web_fetch
+- 用途：抓取公网 http/https 页面，提取标题+正文+前 10 链接回传模型。
+- 参数：
+  - `url`（string，必填）：公网 http(s) 地址。
+- 返回："Title + 正文 + Links（≤10）"，以换行分隔；空页面返回 `(empty page)`。
+- 输出：整体按输出长度上限（默认 8000 字符）截断并标记 `truncated`。
+- SSRF 保护：仅接受公网 http/https（DNS 解析后所有 IP 均须公网），拒绝 file://、内网/回环/链路本地/保留地址；重定向逐跳重新校验；timeout 20s；max_bytes 2MB（超限拒绝）；仅接受 `text/html` / `text/plain` 内容类型。
+
 ## 4. 输出长度与安全约定
 
 - 单次工具输出文本上限：默认 8000 字符（可配置），超出部分以"头+尾"方式截断并插入截断标记。
@@ -107,6 +115,7 @@
 
 - 搜索性能：必要时可在工具内部将 grep 引擎替换为 ripgrep（封装不变，对外 schema 不动）。
 - 并行工具调用：模型一次返回多个 tool_calls 时，串行→并行（按依赖性）。
+- `web_search`（关键词搜索）：下一迭代候选，与 web_fetch 同住 web.py。
 
 ## 6. 变更流程
 

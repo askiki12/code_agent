@@ -15,6 +15,7 @@
 | `permissions.py` | 权限模型：Policy（allow/ask/deny 三态、只读白名单、doom_loop） | 无（纯逻辑，标准库） |
 | `skills.py` | 技能库：SkillRegistry（项目+用户级 SKILL.md 扫描/加载） | 无（纯逻辑，标准库） |
 | `llm.py` | OpenAI 兼容 API 调用（流式）、响应/工具调用解析、重试 | requests |
+| `web.py` | 网络检索：公网 URL 校验（SSRF）、HTML 文本提取、唯一联网点 fetch（session 可注入） | requests |
 
 ## 2. 数据流
 
@@ -52,7 +53,7 @@ loop:                                             │
 - 错误语义：429/5xx/网络错误指数退避重试（默认 3 次）；非重试性 HTTP 错误与畸形 tool 参数 JSON 抛 `LLMError`。
 
 ### tools.py
-- `TOOL_SCHEMAS: list[dict]` — 7 个工具（read_file/write_file/edit_file/list_dir/run_command/glob/grep）的 OpenAI functions JSON Schema。
+- `TOOL_SCHEMAS: list[dict]` — 8 个工具（read_file/write_file/edit_file/list_dir/run_command/glob/grep/web_fetch）的 OpenAI functions JSON Schema。
 - `execute(name, args, workdir) -> ToolResult`。
 - `ToolResult`：`{ok: bool, output: str, truncated: bool, exit_code?: int}` + `as_message()`。
 - 所有输出为纯文本，便于回填给模型；超长自动截断（默认 8000 字符）；受保护路径（`.env*` 除 `.env.example`、`.git`）禁读禁写；写操作限定工作目录内。
@@ -75,6 +76,12 @@ loop:                                             │
 - `SkillRegistry(project_dir, user_dir=None)` — 扫描 `<workdir>/.code_agent/skills/` 与 `~/.code_agent/skills/`（同名项目优先）。
 - `scan() -> list[Skill]`（按 name 排序）/ `load(name) -> str | None`（SKILL.md 全文）。
 - SKILL.md frontmatter：`name` / `description`；缺失或非法跳过并警告。
+
+### web.py
+- `is_public_http_url(url) -> bool`：仅公网 http/https；DNS 解析后所有 IP 均须公网；拒 file://、私网/回环/链路本地/保留段。
+- `extract_web_content(html, base_url) -> WebContent`（title/text/links，前 10 链接，纯函数）。
+- `fetch(url, *, timeout=20.0, max_bytes=2MB, session=None) -> WebContent`：唯一联网点；逐跳重定向校验；失败抛 `WebFetchError`。
+- `WebFetchError(Exception)`。
 
 ### context.py
 - `Conversation` 类：内部维护消息列表（system/user/assistant/tool）。
