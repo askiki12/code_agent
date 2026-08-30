@@ -25,6 +25,10 @@ def format_tool(name: str, ok: bool, truncated: bool, output: str) -> str:
     return f"[tool] {name} {status}" + (f" | {first}" if first else "")
 
 
+def _append_tool_line(conversation: list[str], name: str, res) -> None:
+    conversation.append(format_tool(name, res.ok, res.truncated, res.output))
+
+
 def run_tui(session, store, workspace=None, *, model: str = "") -> None:
     console = Console()
     conversation: list[str] = []
@@ -89,7 +93,11 @@ def run_tui(session, store, workspace=None, *, model: str = "") -> None:
             conversation.append("assistant: ")
             live.update(build_layout("running", "[running…]"))
             live.refresh()
-            result = session.run_task(task, on_delta=lambda d: append_delta(idx, d, live))
+            result = session.run_task(
+                task,
+                on_delta=lambda d: append_delta(idx, d, live),
+                on_tool=lambda name, res: _append_tool_line(conversation, name, res),
+            )
             conversation[idx] = format_assistant(result.final_text) if result.final_text else conversation[idx]
             if not result.finished:
                 conversation.append(f"[agent] stopped: {result.reason}")

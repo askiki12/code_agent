@@ -136,7 +136,12 @@ class AgentSession:
             self.conversation = Conversation()
             self.conversation.add_system(self._system_prompt)
 
-    def run_task(self, task: str, on_delta: Callable[[str], None] | None = None) -> RunResult:
+    def run_task(
+        self,
+        task: str,
+        on_delta: Callable[[str], None] | None = None,
+        on_tool: Callable[[str, ToolResult], None] | None = None,
+    ) -> RunResult:
         self.conversation.add_user(task)
         self._on_delta = on_delta
         consecutive_failures = 0
@@ -177,6 +182,8 @@ class AgentSession:
                 round_failed = False
                 for tc in response.tool_calls:
                     result = self._run_tool(tc)
+                    if on_tool is not None:
+                        on_tool(tc.name, result)
                     if not result.ok:
                         round_failed = True
                     if self.debug:

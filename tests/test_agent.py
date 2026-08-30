@@ -62,6 +62,22 @@ def test_agent_max_iterations(workdir):
     assert result.iterations == 3
 
 
+def test_agent_on_tool_callback(workdir):
+    from code_agent.tools import ToolResult
+    Path(workdir, "a.txt").write_text("hello", encoding="utf-8")
+    llm = FakeLLM([
+        _read_call("c1", "a.txt"),
+        LLMResponse(content="done", tool_calls=[]),
+    ])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5)
+    seen = []
+    result = session.run_task("read file", on_tool=lambda name, res: seen.append((name, res)))
+    assert result.finished and result.final_text == "done"
+    assert len(seen) == 1
+    name, res = seen[0]
+    assert name == "read_file" and isinstance(res, ToolResult) and res.ok
+
+
 def test_agent_stops_on_consecutive_failures(workdir):
     bad = LLMResponse(
         content="",
