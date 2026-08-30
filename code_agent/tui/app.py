@@ -41,6 +41,7 @@ class SkillScreen(Screen):
         self.query_one("#skill-list", SkillList).refresh_from(self._registry)
 
     def on_option_list_option_selected(self, event) -> None:
+        event.stop()
         self.dismiss(event.option.id)
 
 

@@ -369,3 +369,54 @@ def test_app_choose_skill_dispatches(workdir, tmp_path):
             await pilot.press("ctrl+q")
 
     asyncio.run(scenario())
+
+
+def test_app_skill_selection_option_selected_no_bubble(workdir, tmp_path, monkeypatch):
+    from code_agent.llm import LLMResponse
+    from code_agent.skills import SkillRegistry
+    from code_agent.tui.widgets import SkillList
+
+    class _FakeLLM:
+        def chat(self, messages, tools=None, on_delta=None):
+            return LLMResponse(content="done", tool_calls=[])
+
+    proj = str(tmp_path / "proj")
+    import os
+    d = os.path.join(proj, ".code_agent", "skills", "greeting")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write("---\nname: greeting\ndescription: say hi\n---\nhello\n")
+    reg = SkillRegistry(proj, str(tmp_path / "user"))
+    store = SessionStore(str(tmp_path / "sessions"))
+    session = AgentSession(workdir=workdir, llm=_FakeLLM(), max_iterations=3, store=store)
+    session.skills = reg
+    app = CodeAgentApp(session, store, None, model="test")
+    # 固定为「非忙」状态，让冒泡路径确定走到 load_session 分支：
+    # 若不 stop 事件，技能名会被 CodeAgentApp 误当作 session id → 追加 session not found
+    monkeypatch.setattr(app, "_busy", lambda: False)
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            inp = app.query_one("#input")
+            inp.value = "greet me"
+            await pilot.press("ctrl+s")
+            await asyncio.sleep(0.05)
+            sl = app.screen.query_one("#skill-list", SkillList)
+            # 通过真实消息事件触发选中：OptionSelected 由 SkillScreen 处理并 stop，
+            # 不得冒泡到 CodeAgentApp 被误当作 session id（回归测试）
+            selected = type(sl).OptionSelected(sl, sl._options[0], 0)
+            sl.post_message(selected)
+            await asyncio.sleep(0.05)
+            for _ in range(100):
+                log = app.screen.query_one("#log")
+                text = "".join(l.plain for l in log._lines)
+                if "assistant" in text and "> user: 请使用技能 greeting" in text:
+                    break
+                await asyncio.sleep(0.02)
+            text = "".join(l.plain for l in app.screen.query_one("#log")._lines)
+            assert "session not found" not in text
+            assert "请使用技能 greeting 完成：greet me" in text
+            assert session.conversation.messages[-1]["role"] == "assistant"
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
