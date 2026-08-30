@@ -3,7 +3,7 @@ name = "code-agent"
 version = "0.1.0"
 description = "A self-built coding agent"
 requires-python = ">=3.11"
-dependencies = ["requests>=2.31", "rich>=13"]
+dependencies = ["requests>=2.31", "rich>=13", "textual>=0.80"]
 
 [dependency-groups]
 dev = [
