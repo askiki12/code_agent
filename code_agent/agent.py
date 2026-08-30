@@ -11,7 +11,7 @@ from code_agent.llm import LLMError
 from code_agent.permissions import Policy
 from code_agent.session import SessionStore, _make_title
 from code_agent.skills import SkillRegistry
-from code_agent.tools import TOOL_SCHEMAS, ToolResult, execute
+from code_agent.tools import TOOL_SCHEMAS, ToolResult, execute, truncate
 from code_agent.workspace import Workspace
 
 SYSTEM_PROMPT = """You are a coding agent. You work inside a local workspace and complete software tasks autonomously.
@@ -38,6 +38,27 @@ Rules:
 
 MAX_ITERATIONS_DEFAULT = 20
 MAX_CONSECUTIVE_FAILURES = 3
+
+SUBAGENT_MAX_ITERATIONS = 10
+
+SUBAGENT_PROMPT_EXTRA = (
+    "\n\nYou are a subagent delegated a sub-task. Complete it independently "
+    "using the available tools, then reply with a concise report of what you "
+    "did and found. You cannot delegate to sub-subagents."
+)
+
+_DISPATCH_SUBAGENT_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "dispatch_subagent",
+        "description": "Delegate a sub-task to a subagent that runs its own agent loop with all tools except subagent dispatch. Returns the subagent's final report.",
+        "parameters": {
+            "type": "object",
+            "properties": {"task": {"type": "string", "description": "Sub-task description"}},
+            "required": ["task"],
+        },
+    },
+}
 
 _USE_SKILL_SCHEMA = {
     "type": "function",
@@ -77,6 +98,7 @@ class AgentSession:
         policy: Policy | None = None,
         interact: bool = False,
         skills: SkillRegistry | None = None,
+        allow_subagent: bool = True,
     ) -> None:
         self.workdir = workdir
         self.llm = llm
@@ -89,6 +111,8 @@ class AgentSession:
         self.interact = interact
         self.session_id = session_id
         self.skills = skills
+        self.allow_subagent = allow_subagent
+        self._on_delta = None
         skills_section = ""
         if skills is not None:
             entries = "\n".join(f"- {s.name}: {s.description}" for s in skills.scan())
@@ -97,7 +121,11 @@ class AgentSession:
                     "\n\nAvailable skills:\n" + entries
                     + "\nUse the use_skill tool to load a skill when the task matches."
                 )
-        self._system_prompt = SYSTEM_PROMPT + skills_section
+        self._system_prompt = (
+            SYSTEM_PROMPT
+            + skills_section
+            + (SUBAGENT_PROMPT_EXTRA if not allow_subagent else "")
+        )
         if resume:
             if session_id is None:
                 raise ValueError("resume=True requires session_id")
@@ -108,6 +136,7 @@ class AgentSession:
 
     def run_task(self, task: str, on_delta: Callable[[str], None] | None = None) -> RunResult:
         self.conversation.add_user(task)
+        self._on_delta = on_delta
         consecutive_failures = 0
         llm_error_count = 0
         try:
@@ -117,6 +146,8 @@ class AgentSession:
                 messages = self.conversation.build_messages(self.max_context_tokens)
                 try:
                     tools = TOOL_SCHEMAS + ([_USE_SKILL_SCHEMA] if self.skills is not None else [])
+                    if self.allow_subagent:
+                        tools = tools + [_DISPATCH_SUBAGENT_SCHEMA]
                     response = self.llm.chat(messages, tools=tools, on_delta=on_delta)
                 except LLMError as e:
                     llm_error_count += 1
@@ -195,6 +226,10 @@ class AgentSession:
         self.session_id = session_id
 
     def _run_tool(self, tc) -> ToolResult:
+        if tc.name == "dispatch_subagent":
+            if not self.allow_subagent:
+                return ToolResult(ok=False, output="subagent dispatch is disabled for subagents")
+            return self._dispatch_subagent(tc.arguments, on_delta=self._on_delta)
         if tc.name == "use_skill" and self.skills is not None:
             return self._use_skill(tc.arguments)
         if self.policy is not None:

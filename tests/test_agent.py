@@ -328,3 +328,36 @@ def test_agent_use_skill_non_dict_arguments(workdir, tmp_path):
     assert result.finished
     tool_msgs = [m for m in session.conversation.messages if m["role"] == "tool"]
     assert tool_msgs and "skill arguments must be an object" in tool_msgs[0]["content"]
+
+
+def test_agent_main_has_dispatch_tool(workdir):
+    llm = FakeLLM([LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=2)
+    session.run_task("hi")
+    assert llm.tools_calls[0] is not None and any(
+        tc["function"]["name"] == "dispatch_subagent" for tc in llm.tools_calls[0]
+    )
+
+
+def test_agent_subagent_tools_exclude_dispatch(workdir):
+    llm = FakeLLM([LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=2, allow_subagent=False)
+    session.run_task("hi")
+    tools = [tc["function"]["name"] for tc in (llm.tools_calls[0] or [])]
+    assert "dispatch_subagent" not in tools
+    assert "read_file" in tools
+    system = llm.calls[0][0]["content"]
+    assert "You are a subagent" in system
+
+
+def test_agent_subagent_dispatch_runtime_denied(workdir):
+    dispatch = LLMResponse(
+        content="",
+        tool_calls=[ToolCall(id="c1", name="dispatch_subagent", arguments={"task": "x"})],
+    )
+    llm = FakeLLM([dispatch, LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5, allow_subagent=False)
+    result = session.run_task("hi")
+    assert result.finished and result.final_text == "done"
+    tool_msgs = [m for m in session.conversation.messages if m["role"] == "tool"]
+    assert tool_msgs and "subagent dispatch is disabled" in tool_msgs[0]["content"]
