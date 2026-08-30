@@ -23,10 +23,13 @@ class CodeAgentApp(App):
     #sessions { width: 34; border: round $primary; display: none; }
     #sessions.visible { display: block; }
     """
+    COMMANDS = ()
+    ENABLE_COMMAND_PALETTE = False
     BINDINGS = [
         Binding("ctrl+q", "quit", "Quit"),
         Binding("ctrl+n", "new_session", "New"),
         Binding("ctrl+l", "toggle_sessions", "Sessions"),
+        Binding("ctrl+p", "noop", "disabled"),
     ]
 
     def __init__(self, session, store, workspace=None, *, model: str = "") -> None:
@@ -231,6 +234,15 @@ class CodeAgentApp(App):
         sl = self.query_one("#sessions", SessionList)
         sl.toggle_class("visible")
         sl.refresh_from(self.store)
+        log = self.query_one("#log", ConversationLog)
+        try:
+            log._update_body()
+            log.scroll_to(y=min(log.scroll_offset.y, log.max_scroll_y))
+        except Exception:
+            pass  # 布局边缘兜底
+
+    def action_noop(self) -> None:
+        pass
 
     def on_option_list_option_selected(self, event) -> None:
         if self._busy():

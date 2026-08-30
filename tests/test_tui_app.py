@@ -231,3 +231,38 @@ def test_app_subagent_status_marker(workdir, tmp_path):
             await pilot.press("ctrl+q")
 
     asyncio.run(scenario())
+
+
+def test_app_commands_and_bindings():
+    from code_agent.tui.app import CodeAgentApp
+    assert CodeAgentApp.COMMANDS == ()
+    keys = [b.key for b in CodeAgentApp.BINDINGS]
+    assert "ctrl+p" in keys and "ctrl+q" in keys and "ctrl+n" in keys and "ctrl+l" in keys
+
+
+def test_app_toggle_sessions_no_error(workdir, tmp_path):
+    app = _make_app(workdir, tmp_path)
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            await pilot.press("ctrl+l")
+            await pilot.press("ctrl+l")
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
+
+
+def test_app_command_palette_disabled(workdir, tmp_path):
+    from textual.app import CommandPalette
+
+    app = _make_app(workdir, tmp_path)
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            assert not app.use_command_palette
+            await pilot.press("ctrl+p")
+            await pilot.pause()
+            assert not CommandPalette.is_open(app)
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
