@@ -109,7 +109,7 @@ loop:                                             │
 - `_dispatch_subagent(arguments) -> ToolResult` — 构造子会话（继承 workdir/llm/policy/interact/skills，`max_iterations=SUBAGENT_MAX_ITERATIONS=10`，`allow_subagent=False`，不带 store/workspace 故不持久化）跑同步嵌套循环，只回传最终报告（空报告回传 status，按 8000 字符截断）。
 - 子智能体阉割派遣为双层强制、深度恒 1：① 子会话工具列表不含 `dispatch_subagent` schema（模型不可见）；② `_run_tool` 运行时对 `allow_subagent=False` 会话的 `dispatch_subagent` 调用直接返回 `ToolResult(ok=False)` 拒绝。
 - 权限继承：`policy`/`interact` 透传给子会话，`--deny`/`--ask` 规则对子智能体同样生效，防止绕过权限；子会话 system prompt 追加 `SUBAGENT_PROMPT_EXTRA`（subagent 指示）。
-- `run_task(task, on_delta=None) -> RunResult` — 主循环；`RunResult` 含 `final_text/iterations/finished/reason`。
+- `run_task(task, on_delta=None, on_tool=None) -> RunResult` — 主循环；`on_tool` 回调 `(name, ToolResult)` 逐工具调用，TUI 用于渲染工具行；`RunResult` 含 `final_text/iterations/finished/reason`。
 - 终止条件（三条）：无 tool_calls（`complete`）／达到 `max_iterations`／连续失败（工具或 LLM 错误）达 3 次。
 - 错误恢复：工具异常包装为 `ToolResult(ok=False)` 回传模型；`LLMError` 注入修复提示并计数，达阈值优雅终止。
 
