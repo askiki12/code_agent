@@ -17,6 +17,12 @@ def _fake_dns(monkeypatch, mapping):
     monkeypatch.setattr("code_agent.web.socket.getaddrinfo", fake_getaddrinfo)
 
 
+@pytest.fixture(autouse=True)
+def _no_proxy_env(monkeypatch):
+    for key in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"):
+        monkeypatch.delenv(key, raising=False)
+
+
 def test_web_content_dataclass():
     wc = WebContent(title="t", text="b", links=["https://a"])
     assert (wc.title, wc.text, wc.links) == ("t", "b", ["https://a"])
@@ -68,6 +74,27 @@ def test_is_public_http_url_rejects_malformed():
 def test_is_public_http_url_dns_failure(monkeypatch):
     _fake_dns(monkeypatch, {})
     assert not is_public_http_url("https://nohost.invalid")
+
+
+def test_is_public_http_url_proxy_hostname_allowed(monkeypatch):
+    monkeypatch.setenv("https_proxy", "http://127.0.0.1:7897")
+    assert is_public_http_url("https://example.com/path?q=1")
+
+
+def test_is_public_http_url_proxy_rejects_localhost(monkeypatch):
+    monkeypatch.setenv("https_proxy", "http://127.0.0.1:7897")
+    assert not is_public_http_url("http://localhost:8000")
+
+
+def test_is_public_http_url_proxy_rejects_private_ip(monkeypatch):
+    monkeypatch.setenv("https_proxy", "http://127.0.0.1:7897")
+    assert not is_public_http_url("http://10.0.0.1")
+    assert not is_public_http_url("http://192.168.1.1")
+
+
+def test_is_public_http_url_proxy_rejects_non_http(monkeypatch):
+    monkeypatch.setenv("https_proxy", "http://127.0.0.1:7897")
+    assert not is_public_http_url("file:///etc/passwd")
 
 
 from code_agent.web import extract_web_content

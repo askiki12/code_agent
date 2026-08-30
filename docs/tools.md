@@ -103,7 +103,7 @@
   - `url`（string，必填）：公网 http(s) 地址。
 - 返回："Title + 正文 + Links（≤10）"，以换行分隔；空页面返回 `(empty page)`。
 - 输出：整体按输出长度上限（默认 8000 字符）截断并标记 `truncated`。
-- SSRF 保护：仅接受公网 http/https（DNS 解析后所有 IP 均须公网），拒绝 file://、内网/回环/链路本地/保留地址；重定向逐跳重新校验；timeout 20s；max_bytes 2MB（超限拒绝）；仅接受 `text/html` / `text/plain` 内容类型。
+- SSRF 保护：仅 http/https；字面 IP 直接判公网；localhost/.local 拒绝；配置 HTTP(S) 代理时按主机名放行（代理解析真实主机，兼容 fake-ip 代理），无代理时 DNS 解析后所有 IP 均须公网；重定向逐跳重校验；timeout 20s / max_bytes 2MB；仅 text/html|text/plain。
 
 ## 4. 输出长度与安全约定
 

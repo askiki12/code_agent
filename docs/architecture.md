@@ -78,7 +78,7 @@ loop:                                             │
 - SKILL.md frontmatter：`name` / `description`；缺失或非法跳过并警告。
 
 ### web.py
-- `is_public_http_url(url) -> bool`：仅公网 http/https；DNS 解析后所有 IP 均须公网；拒 file://、私网/回环/链路本地/保留段。
+- `is_public_http_url(url) -> bool`：仅公网 http/https；代理感知：无代理时 DNS 后所有 IP 公网，有代理时主机名级校验（代理解析真实主机）；拒 file://、私网/回环/链路本地/保留段。
 - `extract_web_content(html, base_url) -> WebContent`（title/text/links，前 10 链接，纯函数）。
 - `fetch(url, *, timeout=20.0, max_bytes=2MB, session=None) -> WebContent`：唯一联网点；逐跳重定向校验；失败抛 `WebFetchError`。
 - `WebFetchError(Exception)`。

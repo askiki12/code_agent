@@ -58,9 +58,11 @@ web.py（纯标准库；网络 I/O 复用已有 requests）
 │     text: str
 │     links: list[str]
 ├── is_public_http_url(url: str) -> bool
-│     # 纯函数。仅 http/https；DNS 解析后所有 IP 均须为公网。
-│     # 拒绝：file:// 等非 http 协议；localhost/*.localhost；loopback、私网、
-│     #   链路本地、组播、保留段、IPv4-mapped IPv6；解析失败返回 False。
+│     # 代理感知。仅 http/https；字面 IP 直接判公网；localhost/*.localhost/*.local 拒绝；
+│     # 配置 HTTP(S) 代理时按主机名放行（代理解析真实主机，兼容 fake-ip 代理），
+│     # 无代理时 DNS 解析后所有 IP 均须为公网。
+│     # 拒绝：file:// 等非 http 协议；loopback、私网、链路本地、组播、保留段、
+│     #   IPv4-mapped IPv6；解析失败返回 False。
 ├── extract_web_content(html: str, base_url: str) -> WebContent
 │     # 纯函数。基于标准库 html.parser.HTMLParser：
 │     #   - <title> 取标题；
@@ -96,12 +98,13 @@ web.py（纯标准库；网络 I/O 复用已有 requests）
 ## 6. 安全（SSRF 防护）
 
 - **scheme**：仅 `http` / `https`；其余（`file`/`ftp`/`data` 等）拒绝。
-- **主机解析**：DNS 解析主机名，**所有**解析结果均须为公网 IPv4/IPv6 地址。拒绝集合：
+- **主机解析**（代理感知）：字面 IP 直接判定；配置 HTTP(S) 代理时按主机名级放行（连接经代理转发，由代理解析真实主机，故跳过 DNS-IP 检查）；无代理时 DNS 解析主机名，**所有**解析结果均须为公网 IPv4/IPv6 地址。拒绝集合：
   - loopback：`127.0.0.0/8`、`::1`；
   - 私网：`10.0.0.0/8`、`172.16.0.0/12`、`192.168.0.0/16`；
   - 链路本地：`169.254.0.0/16`、`fe80::/10`；
   - 组播/广播/保留：`224.0.0.0/4`、`0.0.0.0/8`、`100.64.0.0/10`(CGNAT)、`fc00::/7`、`::ffff:0:0/96`(IPv4-mapped 按映射 IPv4 判定)；
-  - `localhost` 及裸 IP 直接判据同上。
+  - `localhost`/`*.localhost`/`*.local` 及裸 IP 直接判据同上。
+  - 决策说明：开发环境使用 Clash 类 fake-ip 代理（DNS 对外部域名返回保留段合成地址 198.18.0.0/16），严格"所有解析 IP 公网"会误拒真实公网站点；代理模式下改为主机名级放行，SSRF 面由代理解析目标 + 重定向逐跳重校验兜底。
 - **重定向**：`requests` 逐跳跟随；每一跳的最终目标主机单独重跑公网校验，防 302 跳回内网。
 - **资源上限**：`timeout=20s`、`max_bytes=2MB`；`Content-Length` 超限提前拒绝，流式读取超限截断。
 - **内容类型**：仅 `text/html` / `text/plain`；PDF/图片等 `ok=false`。

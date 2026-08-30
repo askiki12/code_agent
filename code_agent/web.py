@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 import socket
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -44,8 +45,25 @@ def _is_private_ip(ip: str) -> bool:
     return False
 
 
+def _env_proxy() -> str | None:
+    for key in ("https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY"):
+        value = os.environ.get(key)
+        if value:
+            return value
+    return None
+
+
 def is_public_http_url(url: str) -> bool:
-    """True if url is http(s) and every resolved IP is a public address."""
+    """True if url is http(s) and safe to fetch.
+
+    - Literal IP hosts are always checked directly (never proxied).
+    - Hostnames are checked at name level: localhost/.local/.localhost are
+      rejected in all modes.
+    - With an HTTP(S) proxy configured, the connection goes through the proxy
+      which resolves the real host, so DNS-IP checks are skipped (proxy-aware;
+      e.g. fake-ip proxies synthesize reserved-range addresses).
+    - Without a proxy, every resolved address must be public.
+    """
     try:
         parsed = urlparse(url)
     except ValueError:
@@ -58,12 +76,18 @@ def is_public_http_url(url: str) -> bool:
     try:
         ipaddress.ip_address(host)
     except ValueError:
-        try:
-            addrs = [info[4][0] for info in socket.getaddrinfo(host, None, socket.AF_UNSPEC)]
-        except OSError:
-            return False
+        pass
     else:
-        addrs = [host]
+        return not _is_private_ip(host)
+    host_lower = host.lower()
+    if host_lower == "localhost" or host_lower.endswith(".localhost") or host_lower.endswith(".local"):
+        return False
+    if _env_proxy():
+        return True
+    try:
+        addrs = [info[4][0] for info in socket.getaddrinfo(host, None, socket.AF_UNSPEC)]
+    except OSError:
+        return False
     return all(not _is_private_ip(a) for a in addrs)
 
 
