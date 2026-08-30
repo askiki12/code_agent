@@ -64,12 +64,13 @@ v0.1.0 已实现范围：
 - [x] 错误处理：工具错误回传、API 重试（指数退避）、命令超时、解析异常恢复、LLM 错误优雅停止
 - [x] CLI：`--prompt` 一次性任务 + `--interactive` 对话模式，流式输出
 - [x] 搜索工具 glob/grep（纯标准库自实现，grep 带基础 gitignore）
-- [x] 测试：工具/解析/上下文单元测试 + mock 模型集成测试 + 真实 API 冒烟测试（191 用例全绿）
+- [x] 测试：工具/解析/上下文单元测试 + mock 模型集成测试 + 真实 API 冒烟测试（206 用例全绿）
 - [x] 会话持久化与多会话管理（JSONL 存储，--list-sessions/--resume，交互斜杠命令 /new /list /resume）
 - [x] 工作区一等公民（workspace.json 元数据，交互启动展示概况与上次会话续接提示）
 - [x] 权限模型（allow/ask/deny 三态 + 只读命令白名单 + doom_loop 重复检测，--allow/--deny/--ask）
 - [x] skill 机制（SKILL.md 技能库，use_skill 按需加载，项目+用户级）
 - [x] web_fetch 网络检索工具（公网校验 SSRF + 文本提取，ADR-016）
+- [x] web_search 关键词搜索（DDG Lite 免 key，ADR-017）
 
 暂不实现（留作后续扩展，遵循 YAGNI）：
 
@@ -91,7 +92,7 @@ v0.1.0 已实现范围：
 3. [x] 实现 `tools.py`：五个工具的本地执行器
 4. [x] 实现 `context.py`：消息维护 + token 预算 + 裁剪
 5. [x] 实现 `agent.py`：循环、终止条件、错误恢复
-6. [x] 测试与冒烟：单元测试 → mock 集成测试 → 真实 API（已完成，191 用例 + 三次真实冒烟）
+6. [x] 测试与冒烟：单元测试 → mock 集成测试 → 真实 API（已完成，206 用例 + 三次真实冒烟）
 7. [x] 迭代增强：新增 glob/grep 搜索工具（ADR-011，设计见 docs/superpowers/specs/2026-08-29-glob-grep-design.md）
 8. [ ] 演示准备：README.txt + 演示任务 + 视频脚本（待办）
 9. [x] 迭代增强：会话持久化 + 多会话管理（ADR-012，设计见 docs/superpowers/specs/2026-08-29-session-persistence-design.md）
@@ -99,3 +100,4 @@ v0.1.0 已实现范围：
 11. [x] 迭代增强：权限模型（ADR-014，设计见 docs/superpowers/specs/2026-08-29-permissions-design.md）
 12. [x] 迭代增强：skill 机制（ADR-015，设计见 docs/superpowers/specs/2026-08-29-skills-design.md）
 13. [x] 迭代增强：web_fetch 网络检索（ADR-016，设计见 docs/superpowers/specs/2026-08-30-web-fetch-design.md）
+14. [x] 迭代增强：web_search 关键词搜索（ADR-017，设计见 docs/superpowers/specs/2026-08-30-web-search-design.md）

@@ -4,7 +4,7 @@
 
 ## 1. 总则
 
-- 所有工具均为**本地执行**，不依赖任何服务端托管能力。当前工具数量共 8 个（read_file / write_file / edit_file / list_dir / run_command / glob / grep / web_fetch）。
+- 所有工具均为**本地执行**，不依赖任何服务端托管能力。当前工具数量共 9 个（read_file / write_file / edit_file / list_dir / run_command / glob / grep / web_fetch / web_search）。
 - 工具通过 OpenAI 原生 tool calling 接口暴露给模型。
 - 所有工具返回统一格式 `ToolResult`（纯文本，便于回填对话历史）。
 
@@ -105,6 +105,16 @@
 - 输出：整体按输出长度上限（默认 8000 字符）截断并标记 `truncated`。
 - SSRF 保护：仅 http/https；字面 IP 直接判公网；localhost/.local 拒绝；配置 HTTP(S) 代理时按主机名放行（代理解析真实主机，兼容 fake-ip 代理），无代理时 DNS 解析后所有 IP 均须公网；重定向逐跳重校验；timeout 20s / max_bytes 2MB；仅 text/html|text/plain。
 
+### 3.9 web_search
+- 用途：关键词搜索（DuckDuckGo Lite，免 key），返回编号结果列表（标题 + 真实 URL + 摘要）供模型挑选，再用 web_fetch 抓取详情。
+- 参数：
+  - `query`（string，必填）：搜索关键词。
+  - `max_results`（int，可选，默认 8）：返回结果数，clamp 1..10。
+- 返回：编号列表（`N. 标题` + 真实 URL + 摘要 snippet ≤200 字符，snippet 超长截断补 `...`）；无结果返回 `(no results)`。
+- 输出：整体按输出长度上限（默认 8000 字符）截断并标记 `truncated`。
+- 后端：固定 `lite.duckduckgo.com/lite/` 主机，复用既有安全链路（代理感知 + 逐跳公网校验 + 限量 max_bytes），零新 SSRF 面；失败重试 3 次。
+- 与 web_fetch 配合："搜索 → 抓取 → 查证"闭环——web_search 发现候选 URL，web_fetch 抓取全文（自带 SSRF 防护）。
+
 ## 4. 输出长度与安全约定
 
 - 单次工具输出文本上限：默认 8000 字符（可配置），超出部分以"头+尾"方式截断并插入截断标记。
@@ -115,7 +125,6 @@
 
 - 搜索性能：必要时可在工具内部将 grep 引擎替换为 ripgrep（封装不变，对外 schema 不动）。
 - 并行工具调用：模型一次返回多个 tool_calls 时，串行→并行（按依赖性）。
-- `web_search`（关键词搜索）：下一迭代候选，与 web_fetch 同住 web.py。
 
 ## 6. 变更流程
 

@@ -73,9 +73,9 @@ uv run python -m code_agent --interactive
 ## 3. 测试
 
 - 框架：`pytest`（经 `uv run`）。
-- 目录：`tests/`（当前 191 个用例，全部离线，无需 API key）。
+- 目录：`tests/`（当前 206 个用例，全部离线，无需 API key）。
   - `test_smoke.py`：包可导入、版本号。
-  - `test_tools.py`：八个工具的本地执行用例（含 glob/grep）。
+  - `test_tools.py`：九个工具的本地执行用例（含 glob/grep）。
   - `test_llm_parse.py`：tool_calls 响应解析（含异常格式）。
   - `test_context.py`：消息维护、token 估算、裁剪后结构一致性。
   - `test_agent.py`：用 mock 模型跑通完整循环（含终止条件与错误恢复，不含真实 API）。
@@ -84,7 +84,7 @@ uv run python -m code_agent --interactive
   - `test_workspace.py`：工作区初始化/幂等/损坏容错/touch_session。
   - `test_permissions.py`：规则解析/三态/只读白名单/doom_loop/交互询问。
   - `test_skills.py`：技能扫描/合并/覆盖/frontmatter 解析/加载。
-  - `test_web.py`：web_fetch 的公网校验/HTML 提取/fetch 离线 mock。
+  - `test_web.py`：web_fetch 的公网校验/HTML 提取/fetch 离线 mock + web_search 解析/search 用例。
 - 运行全部测试：
 
 ```bash
@@ -110,7 +110,8 @@ uv run pytest tests/ -v
 - 视频脚本要点：
   1. 展示一次性任务输入与流式输出；
   2. 展示 agent 自主调用 read_file / edit_file / run_command；
-  3. 最终用命令验证结果（如跑通测试）。
+  3. 可展示 "web_search → web_fetch → 查证" 闭环（搜索发现候选 URL → 抓取详情 → 用来源验证结论）；
+  4. 最终用命令验证结果（如跑通测试）。
 - 产出物：`README.txt`（≤1000 汉字）+ 演示 mp4（≤200MB）。
 
 ## 7. 已知风险与对策
@@ -121,5 +122,5 @@ uv run pytest tests/ -v
 | 长任务上下文溢出 | 预算裁剪策略（见 `context-management.md`） |
 | 命令工具卡死 | 超时机制 + 无 TTY |
 | 误写真实 API key 进仓库 | 环境变量唯一来源 + 提交前 grep 复核 |
-| 模型凭记忆编造外部事实 | web_fetch 查证公网资料 |
+| 模型凭记忆编造外部事实 | web_search 发现候选 URL + web_fetch 查证公网资料 |
 | 环境不可复现 | uv + `uv.lock` 锁定版本；`uv sync` 一键重建 |

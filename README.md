@@ -58,12 +58,12 @@ uv run python -m code_agent --interactive
 ## 测试与验证
 
 ```bash
-uv run pytest tests/ -v      # 全量测试（当前 191 个，全部离线，无需 API key）
+uv run pytest tests/ -v      # 全量测试（当前 206 个，全部离线，无需 API key）
 ```
 
 ## 功能特性
 
-- **8 个自实现本地工具**：`read_file` / `write_file` / `edit_file`（精确替换 + 原子写）/ `list_dir` / `run_command` / `glob` / `grep`（三种输出模式 + 基础 gitignore）/ `web_fetch`（公网页面标题/正文/链接，SSRF 防护）
+- **9 个自实现本地工具**：`read_file` / `write_file` / `edit_file`（精确替换 + 原子写）/ `list_dir` / `run_command` / `glob` / `grep`（三种输出模式 + 基础 gitignore）/ `web_fetch`（公网页面标题/正文/链接，SSRF 防护）/ `web_search`（DuckDuckGo Lite 免 key，返回标题/URL/摘要）
 - **会话持久化与多会话管理**：对话存 `<workdir>/.code_agent/sessions/`，`--list-sessions` / `--resume` 跨重启续接，交互斜杠命令 `/new` `/list` `/resume`
 - **工作区一等公民**：`workspace.json` 元数据（稳定 id），交互启动展示项目概况与上次会话续接提示
 - **权限模型**：`--allow` / `--deny` / `--ask` 三态规则 + 只读命令白名单 + doom_loop 重复检测；ask 交互询问 y/N，一次性任务降级拒绝
@@ -86,8 +86,8 @@ code_agent/
 │   ├── workspace.py       # 工作区元数据（Workspace）
 │   ├── permissions.py     # 权限模型（Policy：三态/白名单/doom_loop）
 │   ├── skills.py          # 技能库（SkillRegistry）
-│   └── web.py             # 网络检索：公网校验/文本提取/fetch
-├── tests/                 # 191 个离线测试（pytest）
+│   └── web.py             # 网络检索：公网校验/文本提取/fetch/search
+├── tests/                 # 206 个离线测试（pytest）
 ├── docs/                  # 设计/架构/工具/上下文/开发文档 —— 接手者必读
 ├── pyproject.toml         # 依赖与元数据声明
 └── uv.lock                # 环境版本锁定
