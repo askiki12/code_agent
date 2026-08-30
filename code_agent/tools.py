@@ -8,6 +8,8 @@ import re
 import subprocess
 from dataclasses import dataclass
 
+from code_agent import web
+
 MAX_OUTPUT_CHARS = 8000
 DEFAULT_COMMAND_TIMEOUT = 120  # seconds
 MAX_LISTING_ENTRIES = 200
@@ -201,6 +203,14 @@ TOOL_SCHEMAS = [
             },
         },
         ["pattern"],
+    ),
+    _schema(
+        "web_fetch",
+        "Fetch a public web page (http/https) and return its title, readable text and first 10 links. Refuses non-public addresses (internal/private networks, file://).",
+        {
+            "url": {"type": "string", "description": "Public http(s) URL to fetch"},
+        },
+        ["url"],
     ),
 ]
 
@@ -538,6 +548,28 @@ def _grep(args: dict, workdir: str) -> ToolResult:
     return ToolResult(ok=True, output=out, truncated=truncated or out_truncated)
 
 
+def _web_fetch(args: dict, workdir: str) -> ToolResult:
+    url = args.get("url", "")
+    if not url:
+        return ToolResult(ok=False, output="url is required")
+    try:
+        content = web.fetch(url)
+    except web.WebFetchError as e:
+        return ToolResult(ok=False, output=f"web_fetch failed: {e}")
+    parts: list[str] = []
+    if content.title:
+        parts.append(f"Title: {content.title}")
+    if content.text:
+        parts.append(content.text)
+    if content.links:
+        parts.append("Links:")
+        parts.extend(f"- {link}" for link in content.links)
+    if not parts:
+        parts.append("(empty page)")
+    out, truncated = truncate("\n\n".join(parts))
+    return ToolResult(ok=True, output=out, truncated=truncated)
+
+
 _HANDLERS = {
     "read_file": _read_file,
     "write_file": _write_file,
@@ -546,6 +578,7 @@ _HANDLERS = {
     "run_command": _run_command,
     "glob": _glob,
     "grep": _grep,
+    "web_fetch": _web_fetch,
 }
 
 

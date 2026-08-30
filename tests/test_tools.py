@@ -1,7 +1,9 @@
 import os
 from pathlib import Path
 
+from code_agent import web
 from code_agent.tools import TOOL_SCHEMAS, ToolResult, execute, truncate
+from code_agent.web import WebContent, WebFetchError
 
 
 def _write(path, text):
@@ -72,7 +74,9 @@ def test_execute_unknown_tool(workdir):
 
 def test_tool_schemas_have_expected_names():
     names = {s["function"]["name"] for s in TOOL_SCHEMAS}
-    assert names == {"read_file", "write_file", "edit_file", "list_dir", "run_command", "glob", "grep"}
+    assert names == {
+        "read_file", "write_file", "edit_file", "list_dir", "run_command", "glob", "grep", "web_fetch",
+    }
 
 
 def test_write_file(workdir):
@@ -363,3 +367,31 @@ def test_grep_skips_code_agent(workdir):
 def test_execute_use_skill_unknown_without_registry(workdir):
     r = execute("use_skill", {"name": "x"}, workdir)
     assert not r.ok and "unknown tool" in r.output
+
+
+def test_web_fetch_success(workdir, monkeypatch):
+    monkeypatch.setattr(
+        "code_agent.tools.web.fetch",
+        lambda url, *args, **kwargs: WebContent(title="T", text="body text", links=["https://example.com/a"]),
+    )
+    r = execute("web_fetch", {"url": "https://example.com"}, workdir)
+    assert r.ok
+    assert "Title: T" in r.output
+    assert "body text" in r.output
+    assert "https://example.com/a" in r.output
+
+
+def test_web_fetch_failure(workdir, monkeypatch):
+    def boom(url, *args, **kwargs):
+        raise WebFetchError("refusing non-public or unsupported URL")
+
+    monkeypatch.setattr("code_agent.tools.web.fetch", boom)
+    r = execute("web_fetch", {"url": "http://10.0.0.1"}, workdir)
+    assert not r.ok
+    assert "web_fetch failed" in r.output
+    assert "non-public" in r.output
+
+
+def test_web_fetch_missing_url(workdir):
+    r = execute("web_fetch", {}, workdir)
+    assert not r.ok and "url is required" in r.output
