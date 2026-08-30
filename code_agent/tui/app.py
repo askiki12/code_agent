@@ -1,6 +1,9 @@
 """CodeAgentApp: the Textual application for code_agent."""
 from __future__ import annotations
 
+import subprocess
+import threading
+
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
@@ -33,6 +36,7 @@ class CodeAgentApp(App):
         self.workspace = workspace
         self.model = model
         self._worker: AgentWorker | None = None
+        self._bang_busy = False
         self._ask_responder = None
         self._assistant_idx = 0
         self._subagent_idx: int | None = None
@@ -50,7 +54,7 @@ class CodeAgentApp(App):
         return self.workspace.display() if self.workspace is not None else ""
 
     def _busy(self) -> bool:
-        return self._worker is not None and self._worker.is_alive()
+        return (self._worker is not None and self._worker.is_alive()) or self._bang_busy
 
     def _clear_ask(self) -> None:
         self._ask_responder = None
@@ -111,10 +115,51 @@ class CodeAgentApp(App):
                 log.append("New session started.")
             self._refresh_status("idle")
             return
+        if value.startswith("!"):
+            cmd = value[1:].strip()
+            if not cmd:
+                return
+            if self._busy():
+                self.notify("任务正在运行中", severity="warning")
+                return
+            self._run_bang(cmd)
+            return
         if self._busy():
             self.notify("agent 正在运行中", severity="warning")
             return
         self._start_task(value)
+
+    def _run_bang(self, cmd: str) -> None:
+        self._bang_busy = True
+        self.query_one("#log", ConversationLog).append(f"$ {cmd}")
+        self._refresh_status("running")
+        threading.Thread(target=self._run_bang_thread, args=(cmd,), daemon=True).start()
+
+    def _run_bang_thread(self, cmd: str) -> None:
+        try:
+            proc = subprocess.run(cmd, shell=True, cwd=self.session.workdir,
+                                  capture_output=True, text=True, timeout=120)
+            out = (proc.stdout or "")
+            if proc.stderr:
+                out += "\n" + proc.stderr
+            self.app.call_from_thread(lambda: self._append_bang_result(out, proc.returncode))
+        except subprocess.TimeoutExpired:
+            self.app.call_from_thread(lambda: self._append_bang_result("", None))
+        except Exception as e:  # noqa: BLE001
+            self.app.call_from_thread(lambda: self._append_bang_error(f"{type(e).__name__}: {e}"))
+
+    def _append_bang_result(self, out: str, code) -> None:
+        log = self.query_one("#log", ConversationLog)
+        if out.strip():
+            log.append(out.rstrip())
+        log.append("[command timed out after 120s]" if code is None else f"[exit {code}]")
+        self._bang_busy = False
+        self._refresh_status("idle")
+
+    def _append_bang_error(self, msg: str) -> None:
+        self.query_one("#log", ConversationLog).append(f"[command failed: {msg}]")
+        self._bang_busy = False
+        self._refresh_status("idle")
 
     def _start_task(self, task: str) -> None:
         log = self.query_one("#log", ConversationLog)

@@ -141,6 +141,63 @@ def test_app_multi_round_order(workdir, tmp_path):
     asyncio.run(scenario())
 
 
+def test_app_bang_command(workdir, tmp_path, monkeypatch):
+    from code_agent.tui import app as tui_app
+
+    class _R:
+        returncode = 0
+        stdout = "hello world"
+        stderr = ""
+
+    monkeypatch.setattr(tui_app.subprocess, "run", lambda *a, **k: _R())
+    app = _make_app(workdir, tmp_path)
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            inp = app.query_one("#input")
+            inp.value = "!echo hi"
+            await pilot.press("enter")
+            for _ in range(80):
+                log = app.query_one("#log")
+                if "hello world" in "".join(l.plain for l in log._lines):
+                    break
+                await asyncio.sleep(0.02)
+            text = "".join(l.plain for l in app.query_one("#log")._lines)
+            assert "$ echo hi" in text
+            assert "hello world" in text
+            assert "[exit 0]" in text
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
+
+
+def test_app_bang_timeout(workdir, tmp_path, monkeypatch):
+    import subprocess as sp
+    from code_agent.tui import app as tui_app
+
+    def _boom(*a, **k):
+        raise sp.TimeoutExpired("cmd", 120)
+
+    monkeypatch.setattr(tui_app.subprocess, "run", _boom)
+    app = _make_app(workdir, tmp_path)
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            inp = app.query_one("#input")
+            inp.value = "!sleep 999"
+            await pilot.press("enter")
+            for _ in range(80):
+                log = app.query_one("#log")
+                if "timed out" in "".join(l.plain for l in log._lines):
+                    break
+                await asyncio.sleep(0.02)
+            text = "".join(l.plain for l in app.query_one("#log")._lines)
+            assert "[command timed out after 120s]" in text
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
+
+
 def test_app_subagent_status_marker(workdir, tmp_path):
     from code_agent.llm import ToolCall
 
