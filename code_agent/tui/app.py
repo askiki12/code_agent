@@ -6,13 +6,42 @@ import threading
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal
-from textual.widgets import Footer, Header
+from textual.containers import Horizontal, Vertical
+from textual.screen import Screen
+from textual.widgets import Footer, Header, Static
 
 from code_agent.cli import handle_command
 from code_agent.tui import format_assistant, format_tool, format_user
-from code_agent.tui.widgets import ConversationLog, PromptInput, SessionList, StatusBar
+from code_agent.tui.widgets import ConversationLog, PromptInput, SessionList, SkillList, StatusBar
 from code_agent.tui.worker import AgentWorker
+
+
+class SkillScreen(Screen):
+    BINDINGS = [Binding("escape", "dismiss", "Cancel")]
+    CSS = """
+    SkillScreen { align: center middle; }
+    #skill-screen {
+        width: 60%;
+        height: 60%;
+        border: round $accent;
+    }
+    .skill-title { height: 3; }
+    """
+
+    def __init__(self, registry, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self._registry = registry
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="skill-screen"):
+            yield Static("可用技能（↑↓ 选择，Enter 使用，Esc 退出）", classes="skill-title")
+            yield SkillList(id="skill-list")
+
+    def on_mount(self) -> None:
+        self.query_one("#skill-list", SkillList).refresh_from(self._registry)
+
+    def on_option_list_option_selected(self, event) -> None:
+        self.dismiss(event.option.id)
 
 
 class CodeAgentApp(App):
@@ -30,7 +59,8 @@ class CodeAgentApp(App):
         Binding("ctrl+q", "quit", "Quit"),
         Binding("ctrl+n", "new_session", "New"),
         Binding("ctrl+l", "toggle_sessions", "Sessions"),
-        Binding("ctrl+p", "noop", "disabled"),
+        Binding("ctrl+p", "noop", "disabled", show=False),
+        Binding("ctrl+s", "choose_skill", "Skills"),
     ]
 
     def __init__(self, session, store, workspace=None, *, model: str = "") -> None:
@@ -264,6 +294,27 @@ class CodeAgentApp(App):
 
     def action_noop(self) -> None:
         pass
+
+    def action_choose_skill(self) -> None:
+        if self._busy():
+            self.notify("agent 正在运行中，请稍候", severity="warning")
+            return
+        if self.session.skills is None:
+            self.notify("无可用技能", severity="warning")
+            return
+        self.push_screen(SkillScreen(self.session.skills), callback=self._on_skill_chosen)
+
+    def _on_skill_chosen(self, name) -> None:
+        if not name:
+            return
+        inp = self.query_one("#input", PromptInput)
+        input_text = inp.value.strip()
+        inp.clear()
+        if input_text:
+            task = f"请使用技能 {name} 完成：{input_text}"
+        else:
+            task = f"请加载技能 {name} 并按其指令说明能做什么"
+        self._start_task(task)
 
     def on_option_list_option_selected(self, event) -> None:
         if self._busy():

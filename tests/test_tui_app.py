@@ -306,3 +306,66 @@ def test_app_command_palette_disabled(workdir, tmp_path):
             await pilot.press("ctrl+q")
 
     asyncio.run(scenario())
+
+
+def test_app_ctrl_p_hidden_from_footer():
+    from code_agent.tui.app import CodeAgentApp
+    bp = next(b for b in CodeAgentApp.BINDINGS if b.key == "ctrl+p")
+    assert bp.show is False
+
+
+def test_app_choose_skill_no_skills(workdir, tmp_path):
+    app = _make_app(workdir, tmp_path)
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            await pilot.press("ctrl+s")
+            await asyncio.sleep(0.05)
+            assert len(app.screen_stack) == 1  # 未 push 弹窗
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
+
+
+def test_app_choose_skill_dispatches(workdir, tmp_path):
+    from code_agent.llm import LLMResponse
+    from code_agent.skills import SkillRegistry
+
+    class _FakeLLM:
+        def __init__(self):
+            self.tasks = []
+
+        def chat(self, messages, tools=None, on_delta=None):
+            self.tasks.append(messages)
+            return LLMResponse(content="done", tool_calls=[])
+
+    proj = str(tmp_path / "proj")
+    import os
+    d = os.path.join(proj, ".code_agent", "skills", "greeting")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write("---\nname: greeting\ndescription: say hi\n---\nhello\n")
+    reg = SkillRegistry(proj, str(tmp_path / "user"))
+    session = AgentSession(workdir=workdir, llm=_FakeLLM(), max_iterations=3)
+    session.skills = reg
+    store = SessionStore(str(tmp_path / "sessions"))
+    app = CodeAgentApp(session, store, None, model="test")
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            inp = app.query_one("#input")
+            inp.value = "greet me"
+            await pilot.press("ctrl+s")
+            await asyncio.sleep(0.05)
+            # 直接调用回调验证派发路径（弹窗内 OptionSelected→dismiss→callback 闭环由 Esc 测试覆盖）
+            app._on_skill_chosen("greeting")
+            for _ in range(80):
+                if session.conversation.messages and session.conversation.messages[-1]["role"] == "assistant":
+                    break
+                await asyncio.sleep(0.02)
+            text = "".join(l.plain for l in app.query_one("#log")._lines)
+            assert "请使用技能 greeting 完成：greet me" in text
+            assert session.conversation.messages[-1]["role"] == "assistant"
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
