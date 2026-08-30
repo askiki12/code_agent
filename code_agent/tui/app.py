@@ -19,6 +19,7 @@ class CodeAgentApp(App):
     CSS = """
     #log { height: 1fr; border: round $accent; }
     #input { dock: bottom; height: 3; }
+    #input.command-mode { border: round $warning; }
     #status { height: 1; }
     #sessions { width: 34; border: round $primary; display: none; }
     #sessions.visible { display: block; }

@@ -93,10 +93,33 @@ class SessionList(OptionList):
             self.add_option(Option(prompt, id=s["id"]))
 
 
+class SkillList(OptionList):
+    def refresh_from(self, registry) -> None:
+        self.clear_options()
+        for s in registry.scan():
+            self.add_option(Option(f"{s.name}  {s.description}", id=s.name))
+
+
 class PromptInput(Input):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._ask_mode = False
+
     def set_ask_mode(self, prompt: str) -> None:
+        self._ask_mode = True
         self.value = ""
         self.placeholder = prompt
 
     def clear_ask_mode(self) -> None:
+        self._ask_mode = False
         self.placeholder = "❯ 输入任务（/ 开头为命令）"
+
+    def on_input_changed(self, event) -> None:
+        if self._ask_mode:
+            return
+        if self.value.startswith("!"):
+            self.set_class(True, "command-mode")
+            self.placeholder = "❯ shell: 输入命令（回车执行）"
+        else:
+            self.set_class(False, "command-mode")
+            self.placeholder = "❯ 输入任务（/ 开头为命令）"

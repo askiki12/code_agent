@@ -1,6 +1,9 @@
-import pytest
+import asyncio
 
-from code_agent.tui.widgets import ConversationLog, SessionList
+import pytest
+from textual.app import App
+
+from code_agent.tui.widgets import ConversationLog, PromptInput, SessionList, SkillList
 
 
 def test_conversation_log_append_and_update_last():
@@ -44,4 +47,60 @@ def test_session_list_refresh(tmp_path):
     store.create("t1")
     sl = SessionList()
     sl.refresh_from(store)
+    assert sl.option_count == 1
+
+
+class _PromptInputApp(App):
+    def compose(self):
+        yield PromptInput(id="prompt-input")
+
+
+def _run_with_input(scenario) -> None:
+    async def run():
+        app = _PromptInputApp()
+        async with app.run_test():
+            inp = app.query_one("#prompt-input", PromptInput)
+            await scenario(inp)
+
+    asyncio.run(run())
+
+
+def test_prompt_input_command_mode():
+    async def scenario(inp):
+        inp._ask_mode = False
+        inp.value = "!ls"
+        inp.on_input_changed(None)
+        assert inp.has_class("command-mode")
+        assert "shell:" in inp.placeholder
+        inp.value = "ls"
+        inp.on_input_changed(None)
+        assert not inp.has_class("command-mode")
+        assert "shell:" not in inp.placeholder
+
+    _run_with_input(scenario)
+
+
+def test_prompt_input_ask_mode_untouched():
+    async def scenario(inp):
+        inp.set_ask_mode("[permission] allow? [y/N] ")
+        inp._ask_mode = True
+        inp.value = "y"
+        inp.on_input_changed(None)
+        assert not inp.has_class("command-mode")
+        assert "permission" in inp.placeholder
+
+    _run_with_input(scenario)
+
+
+def test_skill_list_refresh(tmp_path):
+    from code_agent.skills import SkillRegistry
+    proj = str(tmp_path / "proj")
+    import os
+    d = os.path.join(proj, ".code_agent", "skills", "greeting")
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write("---\nname: greeting\ndescription: say hi\n---\nhello\n")
+    reg = SkillRegistry(proj, str(tmp_path / "user"))
+    sl = SkillList()
+    sl.refresh_from(reg)
     assert sl.option_count == 1
