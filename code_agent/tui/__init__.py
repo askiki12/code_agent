@@ -25,8 +25,15 @@ def _append_tool_line(conversation: list[str], name: str, res) -> None:
 def _line_style(line: str) -> str:
     if line.startswith("> user:"):
         return "bold cyan"
+    if line.startswith("[subagent]"):
+        return "green" if "✓" in line else "yellow"
     if line.startswith("[tool]"):
         parts = line[len("[tool]"):].split()
+        if len(parts) > 1:
+            if parts[0] == "use_skill":
+                return "magenta"
+            if parts[0] == "dispatch_subagent":
+                return "bold cyan"
         return "dim red" if len(parts) > 1 and parts[1] == "failed" else "dim"
     if line.startswith("[agent] stopped"):
         return "yellow"

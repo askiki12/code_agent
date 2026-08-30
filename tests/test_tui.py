@@ -52,3 +52,13 @@ def test_line_style_stopped_and_session():
 
 def test_line_style_other_dim():
     assert _line_style("1. something") == "dim"
+
+
+def test_line_style_skill_and_subagent():
+    assert _line_style("[tool] use_skill ok | ...") == "magenta"
+    assert _line_style("[tool] dispatch_subagent ok | ...") == "bold cyan"
+
+
+def test_line_style_subagent_running_and_done():
+    assert _line_style("[subagent] 子智能体运行中…") == "yellow"
+    assert _line_style("[subagent] ✓ 完成") == "green"

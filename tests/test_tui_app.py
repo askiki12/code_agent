@@ -139,3 +139,38 @@ def test_app_multi_round_order(workdir, tmp_path):
             await pilot.press("ctrl+q")
 
     asyncio.run(scenario())
+
+
+def test_app_subagent_status_marker(workdir, tmp_path):
+    from code_agent.llm import ToolCall
+
+    class _LLM:
+        def __init__(self):
+            self.n = 0
+
+        def chat(self, messages, tools=None, on_delta=None):
+            self.n += 1
+            if self.n == 1:
+                return LLMResponse(
+                    content="", tool_calls=[ToolCall(id="c1", name="dispatch_subagent", arguments={"task": "sub"})],
+                )
+            return LLMResponse(content="done", tool_calls=[])
+
+    app = _make_app(workdir, tmp_path, _LLM())
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            inp = app.query_one("#input")
+            inp.value = "hi"
+            await pilot.press("enter")
+            for _ in range(150):
+                log = app.query_one("#log")
+                text = "".join(l.plain for l in log._lines)
+                if "[subagent] ✓ 完成" in text:
+                    break
+                await asyncio.sleep(0.02)
+            text = "".join(l.plain for l in app.query_one("#log")._lines)
+            assert "[subagent] 子智能体运行中…" in text or "[subagent] ✓ 完成" in text
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())

@@ -35,6 +35,7 @@ class CodeAgentApp(App):
         self._worker: AgentWorker | None = None
         self._ask_responder = None
         self._assistant_idx = 0
+        self._subagent_idx: int | None = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -127,6 +128,7 @@ class CodeAgentApp(App):
             on_ask=lambda p, resp: self._on_ask(p, resp),
             on_ask_timeout=lambda: self._clear_ask(),
             on_assistant_start=self._on_assistant_start,
+            on_tool_start=self._on_tool_start,
         )
         self._worker.start(task)
 
@@ -135,6 +137,13 @@ class CodeAgentApp(App):
         log.append("assistant: ")
         self._assistant_idx = len(log._lines) - 1
 
+    def _on_tool_start(self, name: str) -> None:
+        if name != "dispatch_subagent":
+            return
+        log = self.query_one("#log", ConversationLog)
+        log.append("[subagent] 子智能体运行中…")
+        self._subagent_idx = len(log._lines) - 1
+
     def _on_delta(self, chunk: str) -> None:
         log = self.query_one("#log", ConversationLog)
         if 0 <= self._assistant_idx < len(log._lines):
@@ -142,7 +151,11 @@ class CodeAgentApp(App):
             log.update_line(self._assistant_idx, current)
 
     def _on_tool(self, name, res) -> None:
-        self.query_one("#log", ConversationLog).append(format_tool(name, res.ok, res.truncated, res.output))
+        log = self.query_one("#log", ConversationLog)
+        if name == "dispatch_subagent" and self._subagent_idx is not None:
+            log.update_line(self._subagent_idx, "[subagent] ✓ 完成")
+            self._subagent_idx = None
+        log.append(format_tool(name, res.ok, res.truncated, res.output))
 
     def _on_done(self, result) -> None:
         log = self.query_one("#log", ConversationLog)
