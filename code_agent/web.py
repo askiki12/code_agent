@@ -246,3 +246,77 @@ def fetch(
     finally:
         if close_session:
             session.close()
+
+
+from urllib.parse import parse_qs
+
+SEARCH_MAX_RESULTS = 8
+SEARCH_BASE = "https://lite.duckduckgo.com/lite/"
+
+
+@dataclass
+class SearchResult:
+    title: str
+    url: str
+    snippet: str
+
+
+def _extract_uddg_url(href: str) -> str | None:
+    try:
+        parsed = urlparse(href)
+    except ValueError:
+        return None
+    values = parse_qs(parsed.query).get("uddg")
+    if not values:
+        return None
+    url = values[0]
+    if url.startswith(("http://", "https://")):
+        return url
+    return None
+
+
+class _SearchParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.results: list[SearchResult] = []
+        self._in_link = False
+        self._link_title: list[str] = []
+        self._link_url: str | None = None
+        self._in_snippet = False
+        self._snippet_parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attr = dict(attrs)
+        if tag == "a" and attr.get("class") == "result-link":
+            self._in_link = True
+            self._link_title = []
+            self._link_url = _extract_uddg_url(attr.get("href") or "")
+        elif tag == "td" and attr.get("class") == "result-snippet":
+            self._in_snippet = True
+            self._snippet_parts = []
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "a" and self._in_link:
+            title = " ".join("".join(self._link_title).split())
+            if self._link_url:
+                self.results.append(SearchResult(title=title, url=self._link_url, snippet=""))
+            self._in_link = False
+        elif tag == "td" and self._in_snippet:
+            snippet = " ".join("".join(self._snippet_parts).split())
+            if len(snippet) > 200:
+                snippet = snippet[:200] + "..."
+            if self.results and not self.results[-1].snippet:
+                self.results[-1].snippet = snippet
+            self._in_snippet = False
+
+    def handle_data(self, data: str) -> None:
+        if self._in_link:
+            self._link_title.append(data)
+        elif self._in_snippet:
+            self._snippet_parts.append(data)
+
+
+def parse_search_results(html: str) -> list[SearchResult]:
+    parser = _SearchParser()
+    parser.feed(html)
+    return parser.results

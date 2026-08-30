@@ -319,3 +319,72 @@ def test_fetch_closes_response(monkeypatch):
     resp = FakeResponse(body="<html><title>T</title></html>".encode())
     fetch("https://example.com/", session=FakeSession([resp]))
     assert resp.closed
+
+
+from code_agent.web import SearchResult, parse_search_results
+
+_SAMPLE = """<html><head><title>DuckDuckGo</title></head><body>
+<table border="0">
+<tr><td valign="top">1.&nbsp;</td>
+<td><a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fdocs.python-requests.org%2Fen%2Fmaster%2Findex.html&amp;rut=abc" class='result-link'>Requests: HTTP for Humans — Requests 2.34.2 documentation</a></td></tr>
+<tr><td>&nbsp;</td><td class='result-snippet'><b>Requests</b>: HTTP for Humans. <b>Requests</b> is an elegant and simple HTTP library.</td></tr>
+<tr><td valign="top">2.&nbsp;</td>
+<td><a rel="nofollow" href="//duckduckgo.com/l/?uddg=javascript%3Aalert(1)&amp;rut=def" class='result-link'>Bad link</a></td></tr>
+<tr><td>&nbsp;</td><td class='result-snippet'>should be filtered out</td></tr>
+<tr><td valign="top">3.&nbsp;</td>
+<td><a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fpypi.org%2Fproject%2Frequests%2F&amp;rut=ghi" class='result-link'>requests · PyPI</a></td></tr>
+<tr><td>&nbsp;</td><td class='result-snippet'>The Python Package Index page for requests.</td></tr>
+</table>
+</body></html>"""
+
+
+def test_parse_search_results_basic():
+    results = parse_search_results(_SAMPLE)
+    assert [r.title for r in results] == [
+        "Requests: HTTP for Humans — Requests 2.34.2 documentation",
+        "requests · PyPI",
+    ]
+    assert results[0].url == "https://docs.python-requests.org/en/master/index.html"
+    assert results[1].url == "https://pypi.org/project/requests/"
+    assert results[0].snippet == (
+        "Requests: HTTP for Humans. Requests is an elegant and simple HTTP library."
+    )
+
+
+def test_parse_search_results_snippet_attached_to_right_result():
+    results = parse_search_results(_SAMPLE)
+    assert results[0].snippet.startswith("Requests:")
+    assert results[1].snippet == "The Python Package Index page for requests."
+
+
+def test_parse_search_results_filters_non_http():
+    urls = [r.url for r in parse_search_results(_SAMPLE)]
+    assert "javascript:alert(1)" not in urls
+    assert all(u.startswith(("http://", "https://")) for u in urls)
+
+
+def test_parse_search_results_snippet_truncated():
+    html = (
+        '<a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fx.com%2F" '
+        "class='result-link'>T</a>"
+        f"<td class='result-snippet'>{'y' * 250}</td>"
+    )
+    results = parse_search_results(html)
+    assert len(results) == 1
+    assert len(results[0].snippet) == 203
+    assert results[0].snippet.endswith("...")
+
+
+def test_parse_search_results_missing_snippet_empty_string():
+    html = (
+        '<a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fx.com%2F" '
+        "class='result-link'>T</a>"
+    )
+    results = parse_search_results(html)
+    assert len(results) == 1
+    assert results[0].snippet == ""
+
+
+def test_parse_search_results_empty_html():
+    assert parse_search_results("") == []
+    assert parse_search_results("<html><body>no results here</body></html>") == []
