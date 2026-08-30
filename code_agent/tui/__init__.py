@@ -27,6 +27,8 @@ def _line_style(line: str) -> str:
         return "bold cyan"
     if line.startswith("[subagent]"):
         return "green" if "✓" in line else "yellow"
+    if line.startswith("[skill]"):
+        return "green" if "✓" in line else ("red" if "✗" in line else "magenta")
     if line.startswith("[tool]"):
         parts = line[len("[tool]"):].split()
         if len(parts) > 1:

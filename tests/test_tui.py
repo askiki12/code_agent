@@ -62,3 +62,9 @@ def test_line_style_skill_and_subagent():
 def test_line_style_subagent_running_and_done():
     assert _line_style("[subagent] 子智能体运行中…") == "yellow"
     assert _line_style("[subagent] ✓ 完成") == "green"
+
+
+def test_line_style_skill():
+    assert _line_style("[skill] 加载 code-review…") == "magenta"
+    assert _line_style("[skill] ✓ code-review") == "green"
+    assert _line_style("[skill] ✗ code-review") == "red"

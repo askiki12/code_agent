@@ -43,6 +43,8 @@ class CodeAgentApp(App):
         self._ask_responder = None
         self._assistant_idx = 0
         self._subagent_idx: int | None = None
+        self._skill_idx: int | None = None
+        self._skill_name: str = ""
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -195,9 +197,14 @@ class CodeAgentApp(App):
         self._assistant_idx = len(log._lines) - 1
 
     def _on_tool_start(self, name: str, arguments: dict) -> None:
+        log = self.query_one("#log", ConversationLog)
+        if name == "use_skill":
+            self._skill_name = str(arguments.get("name", ""))
+            log.append(f"[skill] 加载 {self._skill_name}…")
+            self._skill_idx = len(log._lines) - 1
+            return
         if name != "dispatch_subagent":
             return
-        log = self.query_one("#log", ConversationLog)
         log.append("[subagent] 子智能体运行中…")
         self._subagent_idx = len(log._lines) - 1
 
@@ -209,6 +216,10 @@ class CodeAgentApp(App):
 
     def _on_tool(self, name, res) -> None:
         log = self.query_one("#log", ConversationLog)
+        if name == "use_skill" and self._skill_idx is not None:
+            log.update_line(self._skill_idx, f"[skill] {'✓' if res.ok else '✗'} {self._skill_name}")
+            self._skill_idx = None
+            self._skill_name = ""
         if name == "dispatch_subagent" and self._subagent_idx is not None:
             log.update_line(self._subagent_idx, "[subagent] ✓ 完成" if res.ok else "[subagent] ✗ 失败")
             self._subagent_idx = None

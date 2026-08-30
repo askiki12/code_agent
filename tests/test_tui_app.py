@@ -17,10 +17,10 @@ class _FakeLLM:
         return LLMResponse(content="答复内容", tool_calls=[])
 
 
-def _make_app(workdir, tmp_path, llm=None):
+def _make_app(workdir, tmp_path, llm=None, skills=None):
     if llm is None:
         llm = _FakeLLM()
-    session = AgentSession(workdir=workdir, llm=llm, max_iterations=3)
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=3, skills=skills)
     store = SessionStore(str(tmp_path / "sessions"))
     return CodeAgentApp(session, store, None, model="test")
 
@@ -193,6 +193,46 @@ def test_app_bang_timeout(workdir, tmp_path, monkeypatch):
                 await asyncio.sleep(0.02)
             text = "".join(l.plain for l in app.query_one("#log")._lines)
             assert "[command timed out after 120s]" in text
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
+
+
+def test_app_skill_marker(workdir, tmp_path):
+    from code_agent.llm import ToolCall
+    from code_agent.skills import SkillRegistry
+
+    d = Path(workdir, ".code_agent", "skills", "code-review")
+    d.mkdir(parents=True, exist_ok=True)
+    Path(d, "SKILL.md").write_text(
+        "---\nname: code-review\ndescription: review code\n---\nsteps\n", encoding="utf-8"
+    )
+
+    class _LLM:
+        def __init__(self):
+            self.n = 0
+
+        def chat(self, messages, tools=None, on_delta=None):
+            self.n += 1
+            if self.n == 1:
+                return LLMResponse(content="", tool_calls=[ToolCall(id="c1", name="use_skill", arguments={"name": "code-review"})])
+            return LLMResponse(content="done", tool_calls=[])
+
+    app = _make_app(workdir, tmp_path, _LLM(), skills=SkillRegistry(workdir))
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            inp = app.query_one("#input")
+            inp.value = "review it"
+            await pilot.press("enter")
+            for _ in range(150):
+                log = app.query_one("#log")
+                text = "".join(l.plain for l in log._lines)
+                if "[skill] ✓ code-review" in text:
+                    break
+                await asyncio.sleep(0.02)
+            text = "".join(l.plain for l in app.query_one("#log")._lines)
+            assert "[skill] 加载 code-review…" in text or "[skill] ✓ code-review" in text
             await pilot.press("ctrl+q")
 
     asyncio.run(scenario())
