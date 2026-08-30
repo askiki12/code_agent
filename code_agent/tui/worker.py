@@ -54,5 +54,8 @@ class AgentWorker:
             self.app.call_from_thread(lambda: on_ask(prompt, responder))
             if not ev.wait(timeout=600):
                 if self._on_ask_timeout is not None:
-                    self.app.call_from_thread(self._on_ask_timeout)
+                    try:
+                        self.app.call_from_thread(self._on_ask_timeout)
+                    except Exception:
+                        pass  # UI 线程已关闭
         return holder["answer"]
