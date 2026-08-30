@@ -90,10 +90,10 @@ TUI 打磨迭代后又收到三点反馈 + 一项新需求：
 7. `on_tool_start` 含参：use_skill 工具调用 → 对话区出现 `[skill] 加载 <name>…` → on_tool 后 `[skill] ✓ <name>`。
 
 **test_tui.py（扩展）**
-7. `_line_style`：`[skill] 加载 x…` → 品红；`[skill] ✓ x` → 绿；`[skill] ✗ x` → 红。
+8. `_line_style`：`[skill] 加载 x…` → 品红；`[skill] ✓ x` → 绿；`[skill] ✗ x` → 红。
 
 **test_agent.py（扩展）**
-8. `on_tool_start` 收到 `(name, arguments)`（工具参数）。
+9. `on_tool_start` 收到 `(name, arguments)`（工具参数）。
 
 **兼容回归**：现有 263 用例全绿。
 
@@ -101,7 +101,7 @@ TUI 打磨迭代后又收到三点反馈 + 一项新需求：
 
 ## 9. 文档同步
 
-- `docs/architecture.md`：`run_task` on_tool_start 签名（name, arguments）；TUI 补 `!` 命令模式、Ctrl+S 技能面板、skill 标注。
+- `docs/architecture.md`：`run_task` on_tool_start 签名（name, arguments）；TUI 补 `!` 命令模式、Ctrl+S 技能选择弹窗、skill 标注。
 - `docs/development.md`：快捷键表加 Ctrl+S（技能选择弹窗）；`!` 命令模式说明。
 - `docs/design.md`：§6 勾选；§8 追加（19）；测试计数实际值。
 - `README.md`：快捷键表加 Ctrl+S（技能弹窗）；skill 面板说明；计数实际值。
