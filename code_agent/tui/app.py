@@ -145,11 +145,20 @@ class CodeAgentApp(App):
             out = (proc.stdout or "")
             if proc.stderr:
                 out += "\n" + proc.stderr
-            self.app.call_from_thread(lambda: self._append_bang_result(out, proc.returncode))
+            try:
+                self.app.call_from_thread(lambda: self._append_bang_result(out, proc.returncode))
+            except Exception:
+                pass  # UI 线程已关闭
         except subprocess.TimeoutExpired:
-            self.app.call_from_thread(lambda: self._append_bang_result("", None))
+            try:
+                self.app.call_from_thread(lambda: self._append_bang_result("", None))
+            except Exception:
+                pass
         except Exception as e:  # noqa: BLE001
-            self.app.call_from_thread(lambda: self._append_bang_error(f"{type(e).__name__}: {e}"))
+            try:
+                self.app.call_from_thread(lambda: self._append_bang_error(f"{type(e).__name__}: {e}"))
+            except Exception:
+                pass
 
     def _append_bang_result(self, out: str, code) -> None:
         log = self.query_one("#log", ConversationLog)
@@ -201,13 +210,13 @@ class CodeAgentApp(App):
     def _on_tool(self, name, res) -> None:
         log = self.query_one("#log", ConversationLog)
         if name == "dispatch_subagent" and self._subagent_idx is not None:
-            log.update_line(self._subagent_idx, "[subagent] ✓ 完成")
+            log.update_line(self._subagent_idx, "[subagent] ✓ 完成" if res.ok else "[subagent] ✗ 失败")
             self._subagent_idx = None
         log.append(format_tool(name, res.ok, res.truncated, res.output))
 
     def _on_done(self, result) -> None:
         log = self.query_one("#log", ConversationLog)
-        if result.final_text:
+        if result.final_text and 0 <= self._assistant_idx < len(log._lines):
             log.update_line(self._assistant_idx, format_assistant(result.final_text))
         if not result.finished:
             log.append(f"[agent] stopped: {result.reason}")

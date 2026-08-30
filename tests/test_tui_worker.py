@@ -69,8 +69,8 @@ def test_worker_bridges_new_callbacks(workdir):
                 return LLMResponse(content="", tool_calls=[ToolCall(id="c1", name="read_file", arguments={"path": "a.txt"})])
             return LLMResponse(content="done", tool_calls=[])
 
-    import os
-    open(os.path.join(workdir, "a.txt"), "w").write("hello")
+    from pathlib import Path
+    Path(workdir, "a.txt").write_text("hello", encoding="utf-8")
     session = _make_session(workdir, _LLM())
     app = _FakeApp()
     starts, tool_starts = [], []

@@ -227,7 +227,7 @@ def test_app_subagent_status_marker(workdir, tmp_path):
                     break
                 await asyncio.sleep(0.02)
             text = "".join(l.plain for l in app.query_one("#log")._lines)
-            assert "[subagent] 子智能体运行中…" in text or "[subagent] ✓ 完成" in text
+            assert "[subagent] ✓ 完成" in text
             await pilot.press("ctrl+q")
 
     asyncio.run(scenario())
