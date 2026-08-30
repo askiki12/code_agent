@@ -252,3 +252,29 @@ class AgentSession:
         if content is None:
             return ToolResult(ok=False, output=f"skill not found: {name}")
         return ToolResult(ok=True, output=content)
+
+    def _dispatch_subagent(self, arguments, on_delta=None) -> ToolResult:
+        if not isinstance(arguments, dict) or not str(arguments.get("task", "")).strip():
+            return ToolResult(ok=False, output="task is required")
+        task = str(arguments["task"]).strip()
+        try:
+            sub = AgentSession(
+                workdir=self.workdir,
+                llm=self.llm,
+                max_iterations=SUBAGENT_MAX_ITERATIONS,
+                max_context_tokens=self.max_context_tokens,
+                debug=self.debug,
+                policy=self.policy,
+                interact=self.interact,
+                skills=self.skills,
+                allow_subagent=False,
+            )
+            sub_result = sub.run_task(task, on_delta=on_delta)
+        except Exception as e:  # noqa: BLE001 - last-resort guard
+            return ToolResult(ok=False, output=f"subagent dispatch failed: {type(e).__name__}: {e}")
+        if sub_result.final_text:
+            out = sub_result.final_text
+        else:
+            out = f"(subagent returned no report; status: {sub_result.reason})"
+        out, truncated = truncate(out)
+        return ToolResult(ok=True, output=out, truncated=truncated)

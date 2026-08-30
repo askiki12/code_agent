@@ -361,3 +361,92 @@ def test_agent_subagent_dispatch_runtime_denied(workdir):
     assert result.finished and result.final_text == "done"
     tool_msgs = [m for m in session.conversation.messages if m["role"] == "tool"]
     assert tool_msgs and "subagent dispatch is disabled" in tool_msgs[0]["content"]
+
+
+def test_agent_dispatch_subagent_success(workdir):
+    Path(workdir, "a.txt").write_text("hello", encoding="utf-8")
+    dispatch = LLMResponse(
+        content="",
+        tool_calls=[ToolCall(id="c1", name="dispatch_subagent", arguments={"task": "sub task"})],
+    )
+    llm = FakeLLM([
+        dispatch,
+        _read_call("s1", "a.txt"),
+        LLMResponse(content="sub report", tool_calls=[]),
+        LLMResponse(content="done main", tool_calls=[]),
+    ])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=10)
+    result = session.run_task("main task")
+    assert result.finished and result.final_text == "done main"
+    parent_tool = [m for m in session.conversation.messages if m["role"] == "tool"]
+    assert parent_tool and "sub report" in parent_tool[0]["content"]
+    sub_first = llm.calls[1]
+    assert sub_first[0]["role"] == "system" and "You are a subagent" in sub_first[0]["content"]
+    assert sub_first[1] == {"role": "user", "content": "sub task"}
+    assert "main task" not in str(sub_first)
+    sub_tools = [tc["function"]["name"] for tc in (llm.tools_calls[1] or [])]
+    assert "dispatch_subagent" not in sub_tools
+    assert session.conversation.is_valid()
+
+
+def test_agent_dispatch_missing_task(workdir):
+    dispatch = LLMResponse(
+        content="",
+        tool_calls=[ToolCall(id="c1", name="dispatch_subagent", arguments={})],
+    )
+    llm = FakeLLM([dispatch, LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5)
+    result = session.run_task("hi")
+    assert result.finished and result.final_text == "done"
+    tool_msgs = [m for m in session.conversation.messages if m["role"] == "tool"]
+    assert tool_msgs and "task is required" in tool_msgs[0]["content"]
+
+
+def test_agent_dispatch_subagent_not_finished(workdir):
+    bad = LLMResponse(
+        content="",
+        tool_calls=[ToolCall(id="x1", name="nonexistent_tool", arguments={})],
+    )
+    dispatch = LLMResponse(
+        content="",
+        tool_calls=[ToolCall(id="c1", name="dispatch_subagent", arguments={"task": "sub task"})],
+    )
+    llm = FakeLLM([dispatch, bad, bad, bad, LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=10)
+    result = session.run_task("main task")
+    assert result.finished and result.final_text == "done"
+    tool_msgs = [m for m in session.conversation.messages if m["role"] == "tool"]
+    assert tool_msgs and "(subagent returned no report; status:" in tool_msgs[0]["content"]
+
+
+def test_agent_dispatch_inherits_policy(workdir):
+    from code_agent.permissions import Policy
+    run = LLMResponse(
+        content="",
+        tool_calls=[ToolCall(id="s1", name="run_command", arguments={"command": "echo hi"})],
+    )
+    dispatch = LLMResponse(
+        content="",
+        tool_calls=[ToolCall(id="c1", name="dispatch_subagent", arguments={"task": "sub task"})],
+    )
+    llm = FakeLLM([dispatch, run, LLMResponse(content="sub done", tool_calls=[]), LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=10, policy=Policy(deny=["run_command:*"]))
+    result = session.run_task("main task")
+    assert result.finished and result.final_text == "done"
+    sub_second = llm.calls[2]
+    sub_tool = [m for m in sub_second if m["role"] == "tool"]
+    assert sub_tool and "permission denied" in sub_tool[0]["content"]
+
+
+def test_agent_dispatch_does_not_persist_sub_session(workdir, tmp_path):
+    from code_agent.session import SessionStore
+    store = SessionStore(str(tmp_path / "sessions"))
+    dispatch = LLMResponse(
+        content="",
+        tool_calls=[ToolCall(id="c1", name="dispatch_subagent", arguments={"task": "sub task"})],
+    )
+    llm = FakeLLM([dispatch, LLMResponse(content="sub report", tool_calls=[]), LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5, store=store)
+    result = session.run_task("main task")
+    assert result.finished and result.final_text == "done"
+    assert len(store.list_sessions()) == 1
