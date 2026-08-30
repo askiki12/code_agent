@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import ipaddress
-import os
 import socket
 from dataclasses import dataclass
 from urllib.parse import urlparse
@@ -42,15 +41,20 @@ def _is_private_ip(ip: str) -> bool:
         or addr.is_unspecified
     ):
         return True
+    if addr in ipaddress.ip_network("100.64.0.0/10"):
+        return True
     return False
 
 
-def _env_proxy() -> str | None:
-    for key in ("https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY"):
-        value = os.environ.get(key)
-        if value:
-            return value
-    return None
+def _uses_proxy(url: str) -> bool:
+    """True if requests would route this URL through a proxy (honors NO_PROXY/all_proxy).
+
+    Scheme-specific: get_environ_proxies may include a non-empty ``no`` key (from
+    NO_PROXY) even when no proxy is actually configured; requests only ever routes
+    via the URL's scheme entry, so only that decides.
+    """
+    proxies = requests.utils.get_environ_proxies(url, no_proxy=None)
+    return bool(proxies.get(urlparse(url).scheme))
 
 
 def is_public_http_url(url: str) -> bool:
@@ -74,16 +78,17 @@ def is_public_http_url(url: str) -> bool:
     if not host:
         return False
     host = host.rstrip(".").lower()
+    if not host:
+        return False
     try:
         ipaddress.ip_address(host)
     except ValueError:
         pass
     else:
         return not _is_private_ip(host)
-    host_lower = host.lower()
-    if host_lower == "localhost" or host_lower.endswith(".localhost") or host_lower.endswith(".local"):
+    if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
         return False
-    if _env_proxy():
+    if _uses_proxy(url):
         return True
     try:
         addrs = [info[4][0] for info in socket.getaddrinfo(host, None, socket.AF_UNSPEC)]
@@ -216,19 +221,22 @@ def fetch(
     try:
         try:
             resp = _request_with_validation(session, url, timeout)
-            if resp.status_code != 200:
-                preview = _read_limited(resp, 4096).decode("utf-8", errors="replace")[:200]
-                raise WebFetchError(f"HTTP {resp.status_code}: {preview}")
-            content_type = resp.headers.get("Content-Type", "").lower().split(";")[0].strip()
-            if content_type not in ("text/html", "text/plain") and content_type:
-                raise WebFetchError(f"unsupported content type: {content_type}")
-            body = _read_limited(resp, max_bytes)
-            if content_type == "text/plain":
+            try:
+                if resp.status_code != 200:
+                    preview = _read_limited(resp, 4096).decode("utf-8", errors="replace")[:200]
+                    raise WebFetchError(f"HTTP {resp.status_code}: {preview}")
+                content_type = resp.headers.get("Content-Type", "").lower().split(";")[0].strip()
+                if content_type not in ("text/html", "text/plain") and content_type:
+                    raise WebFetchError(f"unsupported content type: {content_type}")
+                body = _read_limited(resp, max_bytes)
+                if content_type == "text/plain":
+                    charset = _guess_charset(resp.headers.get("Content-Type", ""), body)
+                    return WebContent(title="", text=body.decode(charset, errors="replace"), links=[])
                 charset = _guess_charset(resp.headers.get("Content-Type", ""), body)
-                return WebContent(title="", text=body.decode(charset, errors="replace"), links=[])
-            charset = _guess_charset(resp.headers.get("Content-Type", ""), body)
-            html = body.decode(charset, errors="replace")
-            return extract_web_content(html, resp.url)
+                html = body.decode(charset, errors="replace")
+                return extract_web_content(html, resp.url)
+            finally:
+                resp.close()
         except WebFetchError:
             raise
         except requests.RequestException as e:

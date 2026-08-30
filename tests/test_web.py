@@ -19,7 +19,10 @@ def _fake_dns(monkeypatch, mapping):
 
 @pytest.fixture(autouse=True)
 def _no_proxy_env(monkeypatch):
-    for key in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"):
+    for key in (
+        "http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY",
+        "all_proxy", "ALL_PROXY", "no_proxy", "NO_PROXY",
+    ):
         monkeypatch.delenv(key, raising=False)
 
 
@@ -65,6 +68,11 @@ def test_is_public_http_url_rejects_private_ipv6():
     assert not is_public_http_url("http://[fe80::1]")
 
 
+def test_is_public_http_url_rejects_cgnat():
+    assert not is_public_http_url("http://100.64.0.1")
+    assert not is_public_http_url("http://100.100.1.1")
+
+
 def test_is_public_http_url_rejects_malformed():
     assert not is_public_http_url("not a url")
     assert not is_public_http_url("http://")
@@ -78,27 +86,32 @@ def test_is_public_http_url_dns_failure(monkeypatch):
 
 def test_is_public_http_url_proxy_hostname_allowed(monkeypatch):
     monkeypatch.setenv("https_proxy", "http://127.0.0.1:7897")
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:7897")
     assert is_public_http_url("https://example.com/path?q=1")
 
 
 def test_is_public_http_url_proxy_rejects_localhost(monkeypatch):
     monkeypatch.setenv("https_proxy", "http://127.0.0.1:7897")
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:7897")
     assert not is_public_http_url("http://localhost:8000")
 
 
 def test_is_public_http_url_proxy_rejects_private_ip(monkeypatch):
     monkeypatch.setenv("https_proxy", "http://127.0.0.1:7897")
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:7897")
     assert not is_public_http_url("http://10.0.0.1")
     assert not is_public_http_url("http://192.168.1.1")
 
 
 def test_is_public_http_url_proxy_rejects_non_http(monkeypatch):
     monkeypatch.setenv("https_proxy", "http://127.0.0.1:7897")
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:7897")
     assert not is_public_http_url("file:///etc/passwd")
 
 
 def test_is_public_http_url_proxy_rejects_trailing_dot_forms(monkeypatch):
     monkeypatch.setenv("https_proxy", "http://127.0.0.1:7897")
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:7897")
     assert not is_public_http_url("http://127.0.0.1./")
     assert not is_public_http_url("http://localhost./")
     assert not is_public_http_url("http://10.0.0.1./")
@@ -111,6 +124,7 @@ def test_is_public_http_url_no_proxy_rejects_internal_suffixes():
 
 def test_is_public_http_url_proxy_trailing_dot_public_host_allowed(monkeypatch):
     monkeypatch.setenv("https_proxy", "http://127.0.0.1:7897")
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:7897")
     assert is_public_http_url("https://example.com./")
 
 
@@ -281,3 +295,27 @@ def test_fetch_redirect_to_private_blocked(monkeypatch):
     sess = FakeSession([r1])
     with pytest.raises(WebFetchError, match="non-public"):
         fetch("https://example.com/start", session=sess)
+
+
+def test_fetch_redirect_cap(monkeypatch):
+    _fake_dns(monkeypatch, {"example.com": ["93.184.216.34"]})
+    responses = [
+        FakeResponse(status_code=302, headers={"Location": "https://example.com/x"})
+        for _ in range(12)
+    ]
+    with pytest.raises(WebFetchError, match="too many redirects"):
+        fetch("https://example.com/start", session=FakeSession(responses))
+
+
+def test_fetch_redirect_without_location(monkeypatch):
+    _fake_dns(monkeypatch, {"example.com": ["93.184.216.34"]})
+    resp = FakeResponse(status_code=302, headers={})
+    with pytest.raises(WebFetchError, match="redirect without Location"):
+        fetch("https://example.com/start", session=FakeSession([resp]))
+
+
+def test_fetch_closes_response(monkeypatch):
+    _fake_dns(monkeypatch, {"example.com": ["93.184.216.34"]})
+    resp = FakeResponse(body="<html><title>T</title></html>".encode())
+    fetch("https://example.com/", session=FakeSession([resp]))
+    assert resp.closed

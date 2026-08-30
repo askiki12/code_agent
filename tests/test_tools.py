@@ -392,6 +392,30 @@ def test_web_fetch_failure(workdir, monkeypatch):
     assert "non-public" in r.output
 
 
+def test_web_fetch_empty_page(workdir, monkeypatch):
+    monkeypatch.setattr(
+        "code_agent.tools.web.fetch",
+        lambda url, *args, **kwargs: WebContent(title="", text="", links=[]),
+    )
+    r = execute("web_fetch", {"url": "https://example.com"}, workdir)
+    assert r.ok
+    assert "(empty page)" in r.output
+
+
+def test_web_fetch_links_formatting(workdir, monkeypatch):
+    monkeypatch.setattr(
+        "code_agent.tools.web.fetch",
+        lambda url, *args, **kwargs: WebContent(
+            title="T", text="b", links=["https://example.com/a", "https://example.com/b"]
+        ),
+    )
+    r = execute("web_fetch", {"url": "https://example.com"}, workdir)
+    assert r.ok
+    assert "Links:" in r.output
+    assert "https://example.com/a" in r.output
+    assert "https://example.com/b" in r.output
+
+
 def test_web_fetch_missing_url(workdir):
     r = execute("web_fetch", {}, workdir)
     assert not r.ok and "url is required" in r.output

@@ -73,7 +73,7 @@ uv run python -m code_agent --interactive
 ## 3. 测试
 
 - 框架：`pytest`（经 `uv run`）。
-- 目录：`tests/`（当前 178 个用例，全部离线，无需 API key）。
+- 目录：`tests/`（当前 191 个用例，全部离线，无需 API key）。
   - `test_smoke.py`：包可导入、版本号。
   - `test_tools.py`：八个工具的本地执行用例（含 glob/grep）。
   - `test_llm_parse.py`：tool_calls 响应解析（含异常格式）。
