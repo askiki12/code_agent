@@ -65,12 +65,13 @@ uv run python -m code_agent --interactive
 | `Ctrl+L` | 切换会话列表面板（点击恢复会话） |
 
 - 对话区可滚动：滚轮 / `PageUp` / `PageDown`；近底自动跟随流式输出，向上可回看历史。
-- 状态栏显示工作区 / model / session / 运行状态；流式输出与工具行实时刷新；权限 ask 在输入栏就地确认（y/N）。
+- `!cmd`：在输入栏以 `!` 开头直接执行终端命令（用户主动命令不走权限 policy；后台执行回显，120s 超时，运行中互斥）。
+- 状态栏显示工作区 / model / session / 运行状态；流式输出与工具行实时刷新；子智能体运行标注 `[subagent] 子智能体运行中… / ✓ 完成`；权限 ask 在输入栏就地确认（y/N）。
 
 ## 测试与验证
 
 ```bash
-uv run pytest tests/ -v      # 全量测试（当前 252 个，全部离线，无需 API key）
+uv run pytest tests/ -v      # 全量测试（当前 263 个，全部离线，无需 API key）
 ```
 
 ## 功能特性
@@ -100,7 +101,7 @@ code_agent/
 │   ├── skills.py          # 技能库（SkillRegistry）
 │   ├── web.py             # 网络检索：公网校验/文本提取/fetch/search
 │   └── tui/               # Textual 终端界面：app.py（CodeAgentApp）、widgets.py（控件）、worker.py（后台线程桥）、format_* 纯函数
-├── tests/                 # 252 个离线测试（pytest）
+├── tests/                 # 263 个离线测试（pytest）
 ├── docs/                  # 设计/架构/工具/上下文/开发文档 —— 接手者必读
 ├── pyproject.toml         # 依赖与元数据声明
 └── uv.lock                # 环境版本锁定
