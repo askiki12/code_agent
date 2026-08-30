@@ -1,0 +1,67 @@
+"""Web retrieval: public-URL validation, HTML text extraction, and fetching."""
+from __future__ import annotations
+
+import ipaddress
+import socket
+from dataclasses import dataclass
+from urllib.parse import urlparse
+
+import requests
+
+MAX_LINKS = 10
+DEFAULT_TIMEOUT = 20.0
+MAX_BYTES = 2 * 1024 * 1024
+USER_AGENT = "Mozilla/5.0 (compatible; code_agent/0.1)"
+
+
+class WebFetchError(Exception):
+    pass
+
+
+@dataclass
+class WebContent:
+    title: str
+    text: str
+    links: list[str]
+
+
+def _is_private_ip(ip: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return True
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        return _is_private_ip(str(addr.ipv4_mapped))
+    if (
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_multicast
+        or addr.is_reserved
+        or addr.is_unspecified
+    ):
+        return True
+    return False
+
+
+def is_public_http_url(url: str) -> bool:
+    """True if url is http(s) and every resolved IP is a public address."""
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = parsed.hostname
+    if not host:
+        return False
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        try:
+            addrs = [info[4][0] for info in socket.getaddrinfo(host, None, socket.AF_UNSPEC)]
+        except OSError:
+            return False
+    else:
+        addrs = [host]
+    return all(not _is_private_ip(a) for a in addrs)
