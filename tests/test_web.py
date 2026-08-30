@@ -97,6 +97,23 @@ def test_is_public_http_url_proxy_rejects_non_http(monkeypatch):
     assert not is_public_http_url("file:///etc/passwd")
 
 
+def test_is_public_http_url_proxy_rejects_trailing_dot_forms(monkeypatch):
+    monkeypatch.setenv("https_proxy", "http://127.0.0.1:7897")
+    assert not is_public_http_url("http://127.0.0.1./")
+    assert not is_public_http_url("http://localhost./")
+    assert not is_public_http_url("http://10.0.0.1./")
+
+
+def test_is_public_http_url_no_proxy_rejects_internal_suffixes():
+    assert not is_public_http_url("http://example.local/")
+    assert not is_public_http_url("http://sub.localhost/")
+
+
+def test_is_public_http_url_proxy_trailing_dot_public_host_allowed(monkeypatch):
+    monkeypatch.setenv("https_proxy", "http://127.0.0.1:7897")
+    assert is_public_http_url("https://example.com./")
+
+
 from code_agent.web import extract_web_content
 
 

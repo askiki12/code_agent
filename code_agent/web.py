@@ -73,6 +73,7 @@ def is_public_http_url(url: str) -> bool:
     host = parsed.hostname
     if not host:
         return False
+    host = host.rstrip(".").lower()
     try:
         ipaddress.ip_address(host)
     except ValueError:
