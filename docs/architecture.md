@@ -16,6 +16,7 @@
 | `skills.py` | 技能库：SkillRegistry（项目+用户级 SKILL.md 扫描/加载） | 无（纯逻辑，标准库） |
 | `llm.py` | OpenAI 兼容 API 调用（流式）、响应/工具调用解析、重试 | requests |
 | `web.py` | 网络检索：公网 URL 校验（SSRF）、HTML 文本提取、关键词搜索（DDG Lite）、唯一联网点 fetch/search（session 可注入） | requests |
+| `tui.py` | rich 终端界面：run_tui（状态栏/对话区/输入栏，单线程 Live）、format_* 格式化、权限 ask 渲染 | rich |
 
 ## 2. 数据流
 
@@ -45,6 +46,12 @@ loop:                                             │
 
 ## 3. 模块接口约定（与实际实现一致）
 
+### cli.py
+- `main(argv=None) -> int` — 命令行入口：`_load_dotenv()` → 解析参数 → 构造 Workspace/SessionStore/LLMClient/Policy/SkillRegistry/AgentSession → 分派（`--list-sessions` / `--prompt` / `--interactive`）。
+- `handle_command(command, session, store) -> (keep: bool, out: list[str])` — 交互斜杠命令纯函数（`/new` `/list` `/resume` `/exit`），cli 与 tui 共用，便于测试。
+- `_use_tui() -> bool` — `stdout.isatty()` 且 `NO_TUI` 未设置；`--interactive` 时 TTY 进 TUI，非 TTY 或 `NO_TUI=1` 回退纯文本 input() 循环。
+- `_run(session, task)` — 一次性任务与纯文本交互共用的流式打印。
+
 ### llm.py
 - `LLMClient(*, base_url, api_key, model, timeout=300.0, max_retries=3, debug=False)` — 配置来自环境变量 / `.env` / 命令行。
 - `chat(messages, tools=None, on_delta=None) -> LLMResponse` — 流式 SSE，`on_delta` 按增量回调展示。
@@ -70,8 +77,8 @@ loop:                                             │
 
 ### permissions.py
 - `Policy(allow=None, deny=None, ask=None)` — 规则 `tool:pattern`（fnmatch）。
-- `check(tool, arguments, interact=False) -> PermissionResult`：deny→ask→allow→默认 allow；run_command 应用只读白名单；doom_loop（连续相同调用 ≥3）→ deny。
-- 交互询问：`[permission] ... [y/N]`，y→allow 其余→deny；非交互 ask→deny。
+- `check(tool, arguments, interact=False, ask=None) -> PermissionResult`：deny→ask→allow→默认 allow；run_command 应用只读白名单；doom_loop（连续相同调用 ≥3）→ deny。
+- 交互询问：`[permission] ... [y/N]`，y→allow 其余→deny；非交互 ask→deny。`ask` 为可选回调（缺省 `input()`，纯文本不变）；TUI 传入渲染回调在输入栏确认。
 
 ### skills.py
 - `SkillRegistry(project_dir, user_dir=None)` — 扫描 `<workdir>/.code_agent/skills/` 与 `~/.code_agent/skills/`（同名项目优先）。
@@ -95,7 +102,8 @@ loop:                                             │
 - `estimate_tokens(text) -> int` — 启发式估算（CJK≈1 token，其它≈每 4 字符 1 token）。
 
 ### agent.py
-- `AgentSession(*, workdir, llm, max_iterations=20, max_context_tokens=90000, debug=False, store=None, session_id=None, resume=False, workspace=None, policy=None, interact=False, skills=None, allow_subagent=True)` — `llm` 依赖注入，便于测试；`store`/`workspace`/`policy`/`interact`/`skills` 均可选（无则不启用对应能力）。
+- `AgentSession(*, workdir, llm, max_iterations=20, max_context_tokens=90000, debug=False, store=None, session_id=None, resume=False, workspace=None, policy=None, interact=False, ask=None, skills=None, allow_subagent=True)` — `llm` 依赖注入，便于测试；`store`/`workspace`/`policy`/`interact`/`ask`/`skills` 均可选（无则不启用对应能力）。
+- `ask`（可选回调 `(prompt) -> str`）透传给 `Policy.check` 作权限询问实现，并透传给子会话（subagent）；缺省 `input()`。
 - `use_skill` 工具在 skills 存在时注册；system prompt 注入技能列表（Available skills），加载的 SKILL.md 全文回传模型。
 - `dispatch_subagent` 工具（schema `_DISPATCH_SUBAGENT_SCHEMA`，仅 `task` 参数）在 `allow_subagent=True` 时注入模型工具列表。
 - `_dispatch_subagent(arguments) -> ToolResult` — 构造子会话（继承 workdir/llm/policy/interact/skills，`max_iterations=SUBAGENT_MAX_ITERATIONS=10`，`allow_subagent=False`，不带 store/workspace 故不持久化）跑同步嵌套循环，只回传最终报告（空报告回传 status，按 8000 字符截断）。

@@ -72,6 +72,7 @@ v0.1.0 已实现范围：
 - [x] web_fetch 网络检索工具（公网校验 SSRF + 文本提取，ADR-016）
 - [x] web_search 关键词搜索（DDG Lite 免 key，ADR-017）
 - [x] 子智能体派遣（dispatch_subagent，同步嵌套循环，子智能体阉割派遣，ADR-018）
+- [x] TUI 终端界面（rich，--interactive 升级，状态栏+对话区+输入栏，ADR-019）
 
 暂不实现（留作后续扩展，遵循 YAGNI）：
 
@@ -103,3 +104,4 @@ v0.1.0 已实现范围：
 13. [x] 迭代增强：web_fetch 网络检索（ADR-016，设计见 docs/superpowers/specs/2026-08-30-web-fetch-design.md）
 14. [x] 迭代增强：web_search 关键词搜索（ADR-017，设计见 docs/superpowers/specs/2026-08-30-web-search-design.md）
 15. [x] 迭代增强：子智能体派遣（ADR-018，设计见 docs/superpowers/specs/2026-08-30-subagent-design.md）
+16. [x] 迭代增强：TUI 终端界面（ADR-019，设计见 docs/superpowers/specs/2026-08-30-tui-design.md）
