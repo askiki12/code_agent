@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 import pytest
 
@@ -50,7 +51,7 @@ async def _scenario_new_session(app):
             await asyncio.sleep(0.02)
         await pilot.press("ctrl+n")
         log = app.query_one("#log")
-        assert log._lines == []
+        assert len(log._lines) == 1 and log._lines[0].plain == "New session started."
         await pilot.press("ctrl+q")
 
 
@@ -60,3 +61,37 @@ def test_app_enter_task_renders_user_and_assistant(workdir, tmp_path):
 
 def test_app_new_session_clears_log(workdir, tmp_path):
     asyncio.run(_scenario_new_session(_make_app(workdir, tmp_path)))
+
+
+class _SlowLLM:
+    def chat(self, messages, tools=None, on_delta=None):
+        if on_delta:
+            on_delta("答复内")
+            time.sleep(0.25)
+            on_delta("容")
+        return LLMResponse(content="答复内容", tool_calls=[])
+
+
+def test_app_ctrl_n_during_run_is_ignored(workdir, tmp_path):
+    session = AgentSession(workdir=workdir, llm=_SlowLLM(), max_iterations=3)
+    store = SessionStore(str(tmp_path / "sessions"))
+    app = CodeAgentApp(session, store, None, model="test")
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            inp = app.query_one("#input")
+            inp.value = "hello"
+            await pilot.press("enter")
+            await asyncio.sleep(0.03)  # 让首个 delta 到达
+            await pilot.press("ctrl+n")  # 运行中应被拒绝，不清空
+            for _ in range(150):
+                log = app.query_one("#log")
+                if "答复内容" in log._lines[-1].plain:
+                    break
+                await asyncio.sleep(0.02)
+            text = "".join(l.plain for l in log._lines)
+            assert "worker crash" not in text
+            assert "答复内容" in text
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())

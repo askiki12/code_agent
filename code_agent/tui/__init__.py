@@ -26,7 +26,8 @@ def _line_style(line: str) -> str:
     if line.startswith("> user:"):
         return "bold cyan"
     if line.startswith("[tool]"):
-        return "dim red" if " failed" in line else "dim"
+        parts = line[len("[tool]"):].split()
+        return "dim red" if len(parts) > 1 and parts[1] == "failed" else "dim"
     if line.startswith("[agent] stopped"):
         return "yellow"
     if line.startswith("[session"):

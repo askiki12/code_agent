@@ -5,13 +5,14 @@ import threading
 
 
 class AgentWorker:
-    def __init__(self, app, session, *, on_delta, on_tool, on_done, on_ask=None) -> None:
+    def __init__(self, app, session, *, on_delta, on_tool, on_done, on_ask=None, on_ask_timeout=None) -> None:
         self.app = app
         self.session = session
         self._on_delta = on_delta
         self._on_tool = on_tool
         self._on_done = on_done
         self._on_ask = on_ask
+        self._on_ask_timeout = on_ask_timeout
         self._thread: threading.Thread | None = None
 
     def start(self, task: str) -> None:
@@ -29,7 +30,10 @@ class AgentWorker:
         except Exception as e:  # noqa: BLE001
             from code_agent.agent import RunResult
             result = RunResult(final_text="", iterations=0, finished=False, reason=f"worker crash: {type(e).__name__}: {e}")
-        self.app.call_from_thread(lambda: self._on_done(result))
+        try:
+            self.app.call_from_thread(lambda: self._on_done(result))
+        except Exception:
+            pass  # UI 线程已关闭（如 Ctrl+Q 退出）
 
     def _delta(self, chunk: str) -> None:
         self.app.call_from_thread(lambda: self._on_delta(chunk))
@@ -48,5 +52,7 @@ class AgentWorker:
         if self._on_ask is not None:
             on_ask = self._on_ask
             self.app.call_from_thread(lambda: on_ask(prompt, responder))
-            ev.wait(timeout=600)
+            if not ev.wait(timeout=600):
+                if self._on_ask_timeout is not None:
+                    self.app.call_from_thread(self._on_ask_timeout)
         return holder["answer"]

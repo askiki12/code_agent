@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal
 from textual.widgets import Footer, Header
 
 from code_agent.cli import handle_command
@@ -48,6 +48,13 @@ class CodeAgentApp(App):
     def _workspace_line(self) -> str:
         return self.workspace.display() if self.workspace is not None else ""
 
+    def _busy(self) -> bool:
+        return self._worker is not None and self._worker.is_alive()
+
+    def _clear_ask(self) -> None:
+        self._ask_responder = None
+        self.query_one("#input", PromptInput).clear_ask_mode()
+
     def _refresh_status(self, state: str) -> None:
         self.query_one("#status", StatusBar).update_status(
             state, model=self.model,
@@ -78,16 +85,19 @@ class CodeAgentApp(App):
 
     def on_input_submitted(self, event) -> None:
         value = event.value.strip()
-        self.query_one("#input", PromptInput).clear()
         event.input.clear()
         if not value:
             return
         if self._ask_responder is not None:
-            responder, self._ask_responder = self._ask_responder, None
-            self.query_one("#input", PromptInput).clear_ask_mode()
+            responder = self._ask_responder
+            self._clear_ask()
+            self.query_one("#log", ConversationLog).append(f"[permission] {value}")
             responder(value)
             return
         if value.startswith("/"):
+            if self._busy():
+                self.notify("agent 正在运行中，请稍候", severity="warning")
+                return
             keep, out = handle_command(value, self.session, self.store)
             log = self.query_one("#log", ConversationLog)
             for line in out:
@@ -97,9 +107,10 @@ class CodeAgentApp(App):
                 return
             if value == "/new":
                 log.clear()
+                log.append("New session started.")
             self._refresh_status("idle")
             return
-        if self._worker is not None and self._worker.is_alive():
+        if self._busy():
             self.notify("agent 正在运行中", severity="warning")
             return
         self._start_task(value)
@@ -116,13 +127,15 @@ class CodeAgentApp(App):
             on_tool=lambda n, r: self._on_tool(n, r),
             on_done=lambda r: self._on_done(r),
             on_ask=lambda p, resp: self._on_ask(p, resp),
+            on_ask_timeout=lambda: self._clear_ask(),
         )
         self._worker.start(task)
 
     def _on_delta(self, chunk: str) -> None:
         log = self.query_one("#log", ConversationLog)
-        current = log._lines[self._assistant_idx].plain + chunk
-        log.update_line(self._assistant_idx, current)
+        if 0 <= self._assistant_idx < len(log._lines):
+            current = log._lines[self._assistant_idx].plain + chunk
+            log.update_line(self._assistant_idx, current)
 
     def _on_tool(self, name, res) -> None:
         self.query_one("#log", ConversationLog).append(format_tool(name, res.ok, res.truncated, res.output))
@@ -143,8 +156,13 @@ class CodeAgentApp(App):
         self.query_one("#input", PromptInput).focus()
 
     def action_new_session(self) -> None:
+        if self._busy():
+            self.notify("agent 正在运行中，请稍候", severity="warning")
+            return
         self.session.new_session()
-        self.query_one("#log", ConversationLog).clear()
+        log = self.query_one("#log", ConversationLog)
+        log.clear()
+        log.append("New session started.")
         self._refresh_status("idle")
 
     def action_toggle_sessions(self) -> None:
@@ -153,6 +171,9 @@ class CodeAgentApp(App):
         sl.refresh_from(self.store)
 
     def on_option_list_option_selected(self, event) -> None:
+        if self._busy():
+            self.notify("agent 正在运行中，请稍候", severity="warning")
+            return
         sid = event.option.id
         if not sid:
             return
