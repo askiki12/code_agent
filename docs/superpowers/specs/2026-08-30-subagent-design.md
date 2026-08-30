@@ -36,9 +36,8 @@ description: Delegate a sub-task to a subagent that runs its own agent loop with
 ```
 
 - 返回 `ToolResult`（`ok=true`）output：
-  - 子智能体 `RunResult.final_text`（有内容时）；
-  - 若子智能体未完成（`finished=False`）：在 final_text 后追加 `\n\n[subagent status: <reason>]`；
-  - 若 final_text 为空：`(subagent returned no report; status: <reason>)`。
+  - 子智能体 `RunResult.final_text`（有内容时，即子智能体正常完成）；
+  - 若 final_text 为空（子智能体未完成：max_iterations / 连续失败 / LLM 错误）：`(subagent returned no report; status: <reason>)`。
 - 整体经 `truncate()`（8000 字符）截断并标记 `truncated`。
 - 失败（缺 task / 内部异常）→ `ok=false`，说明原因。
 
@@ -116,8 +115,6 @@ except Exception as e:  # noqa: BLE001
     return ToolResult(ok=False, output=f"subagent dispatch failed: {type(e).__name__}: {e}")
 if sub_result.final_text:
     out = sub_result.final_text
-    if not sub_result.finished:
-        out += f"\n\n[subagent status: {sub_result.reason}]"
 else:
     out = f"(subagent returned no report; status: {sub_result.reason})"
 out, truncated = truncate(out)
@@ -147,8 +144,7 @@ return ToolResult(ok=True, output=out, truncated=truncated)
 | 缺/空白 `task` | `ok=false` "task is required" |
 | 子会话 `run_task` 内部异常 | try/except 兜底 → `ok=false` "subagent dispatch failed: ..." |
 | 子智能体正常完成 | `ok=true`，输出 final_text |
-| 子智能体未完成 | `ok=true`，final_text + `[subagent status: <reason>]` |
-| 子智能体空报告 | `(subagent returned no report; status: <reason>)` |
+| 子智能体未完成（final_text 为空） | `(subagent returned no report; status: <reason>)` |
 | 输出超长 | `truncate()` 8000 截断 |
 
 ## 8. 测试计划（全部离线，mock 模型）
@@ -159,7 +155,7 @@ return ToolResult(ok=True, output=out, truncated=truncated)
 3. 阉割第一层：子会话调用 `llm.chat` 的 `tools` 参数不含 `dispatch_subagent`。
 4. 阉割第二层：`AgentSession(allow_subagent=False)` + FakeLLM 返回 dispatch_subagent → `_run_tool` 返回 `ok=false` "disabled"。
 5. 缺 `task` → `ok=false` "task is required"。
-6. 子智能体未完成：FakeLLM 驱动子会话连续失败达阈值 → 输出含 `[subagent status:`。
+6. 子智能体未完成：FakeLLM 驱动子会话连续失败达阈值 → 输出含 `(subagent returned no report; status:`。
 7. 权限继承：子会话 policy deny run_command → 子会话内 run_command 被拒（permission denied 出现在子会话 tool 结果中）。
 8. 子会话不持久化：父级带 store 派遣后，子会话未创建 session 记录（对子会话断言 `store is None`，或父级派遣后 store 列表不变）。
 9. 主 agent 工具列表含 `dispatch_subagent`（第一层反向断言）。
