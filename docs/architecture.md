@@ -54,6 +54,7 @@ loop:                                             │
 
 ### tools.py
 - `TOOL_SCHEMAS: list[dict]` — 9 个工具（read_file/write_file/edit_file/list_dir/run_command/glob/grep/web_fetch/web_search）的 OpenAI functions JSON Schema。
+- 模型可见工具共 10 个：上述 9 个 + `dispatch_subagent`（schema 定义在 agent.py 的 `_DISPATCH_SUBAGENT_SCHEMA`，按 `allow_subagent` 动态注入）。
 - `execute(name, args, workdir) -> ToolResult`。
 - `ToolResult`：`{ok: bool, output: str, truncated: bool, exit_code?: int}` + `as_message()`。
 - 所有输出为纯文本，便于回填给模型；超长自动截断（默认 8000 字符）；受保护路径（`.env*` 除 `.env.example`、`.git`）禁读禁写；写操作限定工作目录内。
@@ -94,8 +95,12 @@ loop:                                             │
 - `estimate_tokens(text) -> int` — 启发式估算（CJK≈1 token，其它≈每 4 字符 1 token）。
 
 ### agent.py
-- `AgentSession(*, workdir, llm, skills=None, max_iterations=20, max_context_tokens=90000, debug=False)` — `llm` 依赖注入，便于测试。
+- `AgentSession(*, workdir, llm, max_iterations=20, max_context_tokens=90000, debug=False, store=None, session_id=None, resume=False, workspace=None, policy=None, interact=False, skills=None, allow_subagent=True)` — `llm` 依赖注入，便于测试；`store`/`workspace`/`policy`/`interact`/`skills` 均可选（无则不启用对应能力）。
 - `use_skill` 工具在 skills 存在时注册；system prompt 注入技能列表（Available skills），加载的 SKILL.md 全文回传模型。
+- `dispatch_subagent` 工具（schema `_DISPATCH_SUBAGENT_SCHEMA`，仅 `task` 参数）在 `allow_subagent=True` 时注入模型工具列表。
+- `_dispatch_subagent(arguments) -> ToolResult` — 构造子会话（继承 workdir/llm/policy/interact/skills，`max_iterations=SUBAGENT_MAX_ITERATIONS=10`，`allow_subagent=False`，不带 store/workspace 故不持久化）跑同步嵌套循环，只回传最终报告（空报告回传 status，按 8000 字符截断）。
+- 子智能体阉割派遣为双层强制、深度恒 1：① 子会话工具列表不含 `dispatch_subagent` schema（模型不可见）；② `_run_tool` 运行时对 `allow_subagent=False` 会话的 `dispatch_subagent` 调用直接返回 `ToolResult(ok=False)` 拒绝。
+- 权限继承：`policy`/`interact` 透传给子会话，`--deny`/`--ask` 规则对子智能体同样生效，防止绕过权限；子会话 system prompt 追加 `SUBAGENT_PROMPT_EXTRA`（subagent 指示）。
 - `run_task(task, on_delta=None) -> RunResult` — 主循环；`RunResult` 含 `final_text/iterations/finished/reason`。
 - 终止条件（三条）：无 tool_calls（`complete`）／达到 `max_iterations`／连续失败（工具或 LLM 错误）达 3 次。
 - 错误恢复：工具异常包装为 `ToolResult(ok=False)` 回传模型；`LLMError` 注入修复提示并计数，达阈值优雅终止。

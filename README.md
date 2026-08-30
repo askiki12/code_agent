@@ -58,12 +58,12 @@ uv run python -m code_agent --interactive
 ## 测试与验证
 
 ```bash
-uv run pytest tests/ -v      # 全量测试（当前 209 个，全部离线，无需 API key）
+uv run pytest tests/ -v      # 全量测试（当前 217 个，全部离线，无需 API key）
 ```
 
 ## 功能特性
 
-- **9 个自实现本地工具**：`read_file` / `write_file` / `edit_file`（精确替换 + 原子写）/ `list_dir` / `run_command` / `glob` / `grep`（三种输出模式 + 基础 gitignore）/ `web_fetch`（公网页面标题/正文/链接，SSRF 防护）/ `web_search`（DuckDuckGo Lite 免 key，返回标题/URL/摘要）
+- **10 个模型可见工具**：9 个本地工具 `read_file` / `write_file` / `edit_file`（精确替换 + 原子写）/ `list_dir` / `run_command` / `glob` / `grep`（三种输出模式 + 基础 gitignore）/ `web_fetch`（公网页面标题/正文/链接，SSRF 防护）/ `web_search`（DuckDuckGo Lite 免 key，返回标题/URL/摘要），外加 `dispatch_subagent`（同步子智能体派遣：子智能体阉割派遣、权限继承）
 - **会话持久化与多会话管理**：对话存 `<workdir>/.code_agent/sessions/`，`--list-sessions` / `--resume` 跨重启续接，交互斜杠命令 `/new` `/list` `/resume`
 - **工作区一等公民**：`workspace.json` 元数据（稳定 id），交互启动展示项目概况与上次会话续接提示
 - **权限模型**：`--allow` / `--deny` / `--ask` 三态规则 + 只读命令白名单 + doom_loop 重复检测；ask 交互询问 y/N，一次性任务降级拒绝
@@ -78,7 +78,7 @@ uv run pytest tests/ -v      # 全量测试（当前 209 个，全部离线，�
 code_agent/
 ├── code_agent/            # 主包
 │   ├── cli.py             # 命令行入口（含 .env 自动加载、权限参数、会话/工作区接线）
-│   ├── agent.py           # 会话循环、终止条件、错误恢复、权限检查、skill 注入
+│   ├── agent.py           # 会话循环、终止条件、错误恢复、权限检查、skill 注入、dispatch_subagent
 │   ├── context.py         # 消息管理、token 预算、裁剪、序列化
 │   ├── tools.py           # 工具 schema + 本地执行器
 │   ├── llm.py             # OpenAI 兼容流式客户端 + tool_calls 解析
@@ -87,7 +87,7 @@ code_agent/
 │   ├── permissions.py     # 权限模型（Policy：三态/白名单/doom_loop）
 │   ├── skills.py          # 技能库（SkillRegistry）
 │   └── web.py             # 网络检索：公网校验/文本提取/fetch/search
-├── tests/                 # 209 个离线测试（pytest）
+├── tests/                 # 217 个离线测试（pytest）
 ├── docs/                  # 设计/架构/工具/上下文/开发文档 —— 接手者必读
 ├── pyproject.toml         # 依赖与元数据声明
 └── uv.lock                # 环境版本锁定

@@ -73,12 +73,12 @@ uv run python -m code_agent --interactive
 ## 3. 测试
 
 - 框架：`pytest`（经 `uv run`）。
-- 目录：`tests/`（当前 209 个用例，全部离线，无需 API key）。
+- 目录：`tests/`（当前 217 个用例，全部离线，无需 API key）。
   - `test_smoke.py`：包可导入、版本号。
   - `test_tools.py`：九个工具的本地执行用例（含 glob/grep）。
   - `test_llm_parse.py`：tool_calls 响应解析（含异常格式）。
   - `test_context.py`：消息维护、token 估算、裁剪后结构一致性。
-  - `test_agent.py`：用 mock 模型跑通完整循环（含终止条件与错误恢复，不含真实 API）。
+  - `test_agent.py`：用 mock 模型跑通完整循环（含终止条件与错误恢复、dispatch_subagent 子智能体派遣/阉割双层强制/权限继承用例，不含真实 API）。
   - `test_cli.py`：`.env` 加载、缺 key 报错、一次性任务入口。
   - `test_session.py`：SessionStore 创建/保存/加载/列表/坏文件容错。
   - `test_workspace.py`：工作区初始化/幂等/损坏容错/touch_session。
@@ -111,7 +111,8 @@ uv run pytest tests/ -v
   1. 展示一次性任务输入与流式输出；
   2. 展示 agent 自主调用 read_file / edit_file / run_command；
   3. 可展示 "web_search → web_fetch → 查证" 闭环（搜索发现候选 URL → 抓取详情 → 用来源验证结论）；
-  4. 最终用命令验证结果（如跑通测试）。
+  4. 可展示父智能体 dispatch_subagent 派出子智能体完成子任务，子智能体阉割派遣（不能递归派遣）；
+  5. 最终用命令验证结果（如跑通测试）。
 - 产出物：`README.txt`（≤1000 汉字）+ 演示 mp4（≤200MB）。
 
 ## 7. 已知风险与对策
@@ -123,4 +124,5 @@ uv run pytest tests/ -v
 | 命令工具卡死 | 超时机制 + 无 TTY |
 | 误写真实 API key 进仓库 | 环境变量唯一来源 + 提交前 grep 复核 |
 | 模型凭记忆编造外部事实 | web_search 发现候选 URL + web_fetch 查证公网资料 |
+| 子智能体越权/无限嵌套 | 阉割双层强制（子会话无派遣 schema + 运行时拒绝，深度恒 1）+ 权限继承（--deny/--ask 对子智能体生效）+ max_iterations=10 |
 | 环境不可复现 | uv + `uv.lock` 锁定版本；`uv sync` 一键重建 |

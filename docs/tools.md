@@ -4,7 +4,8 @@
 
 ## 1. 总则
 
-- 所有工具均为**本地执行**，不依赖任何服务端托管能力。当前工具数量共 9 个（read_file / write_file / edit_file / list_dir / run_command / glob / grep / web_fetch / web_search）。
+- 所有工具均为**本地执行**，不依赖任何服务端托管能力。当前模型可见工具共 10 个（read_file / write_file / edit_file / list_dir / run_command / glob / grep / web_fetch / web_search / dispatch_subagent）。
+- 其中 9 个的 JSON Schema 定义于 `tools.py` 的 `TOOL_SCHEMAS`；`dispatch_subagent` 为编排工具，其 schema 定义于 `agent.py`（`_DISPATCH_SUBAGENT_SCHEMA`），按 `allow_subagent` 动态注入。
 - 工具通过 OpenAI 原生 tool calling 接口暴露给模型。
 - 所有工具返回统一格式 `ToolResult`（纯文本，便于回填对话历史）。
 
@@ -114,6 +115,20 @@
 - 输出：整体按输出长度上限（默认 8000 字符）截断并标记 `truncated`。
 - 后端：固定 `lite.duckduckgo.com/lite/` 主机，复用既有安全链路（代理感知 + 逐跳公网校验 + 限量 max_bytes），零新 SSRF 面；失败重试 3 次。
 - 与 web_fetch 配合："搜索 → 抓取 → 查证"闭环——web_search 发现候选 URL，web_fetch 抓取全文（自带 SSRF 防护）。
+
+### 3.10 dispatch_subagent
+- 用途：把子任务委托给子智能体。子智能体运行自己的 agent 循环（**同步嵌套循环**，父会话阻塞等待），完成后只回传最终报告。
+- 参数：
+  - `task`（string，必填）：子任务描述。
+- 返回：子智能体最终报告（整体按输出长度上限 8000 字符截断并标记 `truncated`）；子智能体无最终文本时返回 `(subagent returned no report; status: <reason>)`。
+- 子智能体能力：继承父会话的 workdir/llm/policy/interact/skills（`use_skill` 可用），保留全部 9 个本地工具 + `use_skill`；`max_iterations=10`（`SUBAGENT_MAX_ITERATIONS`）。
+- 阉割派遣（双层强制，深度恒 1）：
+  1. 子会话 `allow_subagent=False`，其模型工具列表不含 `dispatch_subagent` schema（模型不可见、无法发起派遣）；
+  2. 即便模型尝试调用，`_run_tool` 运行时对 `allow_subagent=False` 会话的 `dispatch_subagent` 直接返回拒绝（`ToolResult(ok=False)`）；
+  3. 子会话 system prompt 追加 subagent 指示（"You cannot delegate to sub-subagents"）。
+- 权限继承：`policy`/`interact` 透传给子会话，`--deny`/`--ask` 规则对子智能体同样生效，防止绕过权限。
+- 不持久化：子会话不携带 store/workspace，子任务对话不写入会话存储，回传仅最终报告，避免污染父上下文。
+- 注意：本工具的 JSON Schema 定义于 `agent.py`（`_DISPATCH_SUBAGENT_SCHEMA`），不属于 `tools.py` 的 `TOOL_SCHEMAS`。
 
 ## 4. 输出长度与安全约定
 
