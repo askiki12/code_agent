@@ -423,6 +423,13 @@ def test_search_clamps_max_results(monkeypatch):
     assert len(r99) == 5
 
 
+def test_search_upper_clamp_caps_at_ten(monkeypatch):
+    _fake_dns(monkeypatch, {"lite.duckduckgo.com": ["93.184.216.34"]})
+    resp = FakeResponse(headers={"Content-Type": "text/html; charset=utf-8"}, body=_html_with(12).encode())
+    results = search("q", max_results=99, session=FakeSession([resp]))
+    assert len(results) == 10
+
+
 def test_search_retries_then_succeeds(monkeypatch):
     _fake_dns(monkeypatch, {"lite.duckduckgo.com": ["93.184.216.34"]})
     sess = FakeSession([

@@ -435,6 +435,8 @@ def test_web_search_success(workdir, monkeypatch):
     assert "1. Requests docs" in r.output
     assert "https://pypi.org/project/requests/" in r.output
     assert "HTTP for Humans" in r.output
+    assert "\n\n" in r.output
+    assert r.truncated is False
 
 
 def test_web_search_empty_results(workdir, monkeypatch):
@@ -455,3 +457,20 @@ def test_web_search_failure(workdir, monkeypatch):
 def test_web_search_missing_query(workdir):
     r = execute("web_search", {}, workdir)
     assert not r.ok and "query is required" in r.output
+
+
+def test_web_search_whitespace_query(workdir):
+    r = execute("web_search", {"query": "   "}, workdir)
+    assert not r.ok and "query is required" in r.output
+
+
+def test_web_search_non_int_max_results_defaults(workdir, monkeypatch):
+    seen = {}
+
+    def fake_search(query, max_results=8, *args, **kwargs):
+        seen["max_results"] = max_results
+        return [SearchResult(title="T", url="https://example.com/", snippet="S")]
+
+    monkeypatch.setattr("code_agent.tools.web.search", fake_search)
+    r = execute("web_search", {"query": "q", "max_results": "x"}, workdir)
+    assert r.ok and seen["max_results"] == 8
