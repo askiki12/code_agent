@@ -59,7 +59,7 @@ uv run python -m code_agent --interactive
 ## 测试与验证
 
 ```bash
-uv run pytest tests/ -v      # 全量测试（当前 236 个，全部离线，无需 API key）
+uv run pytest tests/ -v      # 全量测试（当前 239 个，全部离线，无需 API key）
 ```
 
 ## 功能特性
@@ -89,7 +89,7 @@ code_agent/
 │   ├── skills.py          # 技能库（SkillRegistry）
 │   ├── web.py             # 网络检索：公网校验/文本提取/fetch/search
 │   └── tui.py             # rich 终端界面：run_tui（状态栏/对话区/输入栏）、format_* 格式化
-├── tests/                 # 236 个离线测试（pytest）
+├── tests/                 # 239 个离线测试（pytest）
 ├── docs/                  # 设计/架构/工具/上下文/开发文档 —— 接手者必读
 ├── pyproject.toml         # 依赖与元数据声明
 └── uv.lock                # 环境版本锁定

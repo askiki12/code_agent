@@ -90,3 +90,15 @@ def test_save_keeps_created_at(tmp_path):
 def test_make_title_truncates():
     assert _make_title("a" * 100) == "a" * 40
     assert _make_title("  hi   there  ") == "hi there"
+
+
+def test_save_conversation_with_surrogates(tmp_path):
+    from code_agent.context import Conversation
+    store = SessionStore(str(tmp_path / "sessions"))
+    conv = Conversation()
+    conv.add_system("sys")
+    conv.add_assistant("bad \ud83d content")
+    sid = store.create("t")
+    store.save(sid, conv.messages, title="t")  # must not raise
+    _, msgs = store.load(sid)
+    assert "surrogate" not in str(msgs)

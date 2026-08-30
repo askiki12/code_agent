@@ -212,7 +212,7 @@ class AgentSession:
                     self.store.save(self.session_id, self.conversation.messages, title=title)
                     if self.workspace is not None:
                         self.workspace.touch_session(self.session_id)
-                except OSError as e:
+                except (OSError, ValueError) as e:
                     print(f"[agent] warning: failed to persist session/workspace: {e}", file=sys.stderr)
 
     def _title(self) -> str:

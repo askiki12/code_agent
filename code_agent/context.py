@@ -9,6 +9,12 @@ _CJK_RE = re.compile(
     r"[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af]"
 )
 
+_SURROGATE_RE = re.compile(r"[\ud800-\udfff]")
+
+
+def _clean_surrogates(text: str) -> str:
+    return _SURROGATE_RE.sub("\ufffd", text) if _SURROGATE_RE.search(text) else text
+
 
 def estimate_tokens(text: str) -> int:
     """Heuristic token estimate: CJK chars ~1 token, other chars ~1 token / 4 chars."""
@@ -22,13 +28,13 @@ class Conversation:
         self._messages: list[dict[str, Any]] = []
 
     def add_system(self, text: str) -> None:
-        self._messages.append({"role": "system", "content": text})
+        self._messages.append({"role": "system", "content": _clean_surrogates(text)})
 
     def add_user(self, text: str) -> None:
-        self._messages.append({"role": "user", "content": text})
+        self._messages.append({"role": "user", "content": _clean_surrogates(text)})
 
     def add_assistant(self, content: str, tool_calls: list | None = None) -> None:
-        msg: dict[str, Any] = {"role": "assistant", "content": content}
+        msg: dict[str, Any] = {"role": "assistant", "content": _clean_surrogates(content)}
         if tool_calls:
             msg["tool_calls"] = [
                 {
@@ -49,7 +55,7 @@ class Conversation:
                 "role": "tool",
                 "tool_call_id": tool_call_id,
                 "name": name,
-                "content": output,
+                "content": _clean_surrogates(output),
             }
         )
 

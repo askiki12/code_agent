@@ -103,3 +103,20 @@ def test_from_jsonl_reinjects_system():
 def test_from_jsonl_skips_bad_lines():
     conv = Conversation.from_jsonl('not-json\n{}\n{"role":"user","content":"u"}\n')
     assert conv.messages == [{"role": "user", "content": "u"}]
+
+
+def test_add_assistant_cleans_surrogates():
+    conv = Conversation()
+    conv.add_system("sys")
+    conv.add_assistant("bad \ud83d text")
+    content = conv.messages[-1]["content"]
+    assert "\ud83d" not in content and "\ufffd" in content
+
+
+def test_add_user_and_tool_clean_surrogates():
+    conv = Conversation()
+    conv.add_system("sys")
+    conv.add_user("u \ud83e")
+    conv.add_tool("c1", "run_command", "out \ud83d")
+    assert "\ud83e" not in conv.messages[1]["content"]
+    assert "\ud83d" not in conv.messages[2]["content"]
