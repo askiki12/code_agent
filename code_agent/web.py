@@ -65,3 +65,56 @@ def is_public_http_url(url: str) -> bool:
     else:
         addrs = [host]
     return all(not _is_private_ip(a) for a in addrs)
+
+
+from html.parser import HTMLParser
+from urllib.parse import urljoin
+
+
+class _TextExtractor(HTMLParser):
+    def __init__(self, base_url: str, max_links: int = MAX_LINKS) -> None:
+        super().__init__(convert_charrefs=True)
+        self._base_url = base_url
+        self._max_links = max_links
+        self._title_parts: list[str] = []
+        self._text_parts: list[str] = []
+        self._skip_depth = 0
+        self._in_title = False
+        self.links: list[str] = []
+        self._block_tags = {"p", "div", "br", "li", "h1", "h2", "h3", "h4", "tr", "pre", "ul", "ol", "blockquote"}
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style", "noscript"}:
+            self._skip_depth += 1
+        elif tag == "title" and not self._title_parts:
+            self._in_title = True
+        if tag in self._block_tags:
+            self._text_parts.append("\n")
+        for name, value in attrs:
+            if name == "href" and value and len(self.links) < self._max_links:
+                absolute = urljoin(self._base_url, value)
+                if absolute.startswith(("http://", "https://")):
+                    self.links.append(absolute)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style", "noscript"}:
+            self._skip_depth = max(0, self._skip_depth - 1)
+        elif tag == "title":
+            self._in_title = False
+        if tag in self._block_tags:
+            self._text_parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._in_title:
+            self._title_parts.append(data)
+        elif self._skip_depth == 0:
+            self._text_parts.append(data)
+
+
+def extract_web_content(html: str, base_url: str) -> WebContent:
+    parser = _TextExtractor(base_url)
+    parser.feed(html)
+    title = " ".join("".join(parser._title_parts).split())
+    lines = [" ".join(line.split()) for line in "".join(parser._text_parts).splitlines()]
+    lines = [line for line in lines if line]
+    return WebContent(title=title, text="\n".join(lines), links=parser.links)
