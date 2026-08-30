@@ -519,3 +519,21 @@ def test_agent_dispatch_passes_ask_to_sub(workdir):
     result = session.run_task("main task")
     assert result.finished and result.final_text == "done"
     assert ask_calls and "[permission]" in ask_calls[0]
+
+
+def test_agent_on_assistant_and_tool_start_callbacks(workdir):
+    Path(workdir, "a.txt").write_text("hello", encoding="utf-8")
+    llm = FakeLLM([
+        LLMResponse(content="planning", tool_calls=[ToolCall(id="c1", name="read_file", arguments={"path": "a.txt"})]),
+        LLMResponse(content="done", tool_calls=[]),
+    ])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5)
+    starts, tool_starts = [], []
+    result = session.run_task(
+        "do it",
+        on_assistant_start=lambda: starts.append(1),
+        on_tool_start=lambda n: tool_starts.append(n),
+    )
+    assert result.finished and result.final_text == "done"
+    assert len(starts) == 2
+    assert tool_starts == ["read_file"]

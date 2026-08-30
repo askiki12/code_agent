@@ -141,6 +141,8 @@ class AgentSession:
         task: str,
         on_delta: Callable[[str], None] | None = None,
         on_tool: Callable[[str, ToolResult], None] | None = None,
+        on_assistant_start: Callable[[], None] | None = None,
+        on_tool_start: Callable[[str], None] | None = None,
     ) -> RunResult:
         self.conversation.add_user(task)
         self._on_delta = on_delta
@@ -155,6 +157,8 @@ class AgentSession:
                     tools = TOOL_SCHEMAS + ([_USE_SKILL_SCHEMA] if self.skills is not None else [])
                     if self.allow_subagent:
                         tools = tools + [_DISPATCH_SUBAGENT_SCHEMA]
+                    if on_assistant_start is not None:
+                        on_assistant_start()
                     response = self.llm.chat(messages, tools=tools, on_delta=on_delta)
                 except LLMError as e:
                     llm_error_count += 1
@@ -181,6 +185,8 @@ class AgentSession:
                     )
                 round_failed = False
                 for tc in response.tool_calls:
+                    if on_tool_start is not None:
+                        on_tool_start(tc.name)
                     result = self._run_tool(tc)
                     if on_tool is not None:
                         on_tool(tc.name, result)
