@@ -54,14 +54,15 @@ loop:                                             │
 
 ### tui/ 包（Textual 全屏 TUI，ADR-020）
 - `run_tui(session, store, workspace=None, *, model="") -> None` — 构造并启动 `CodeAgentApp`；签名与 rich 版一致，cli 零改动。
-- `format_user / format_assistant / format_tool / _append_tool_line / _line_style` — 纯函数：对话行格式化与按前缀着色（user cyan、tool dim、use_skill magenta、dispatch_subagent bold cyan、subagent yellow/green、stopped yellow、session magenta），便于离线测试。
-- `CodeAgentApp(session, store, workspace=None, *, model="")` — Textual 应用：Header + StatusBar + Horizontal(ConversationLog + SessionList) + PromptInput + Footer；绑定 Ctrl+Q（退出）/ Ctrl+N（新建会话）/ Ctrl+L（切换会话列表面板）/ Ctrl+P（noop，禁用）；`COMMANDS=()` + `ENABLE_COMMAND_PALETTE=False` 移除命令面板；`on_input_submitted` 处理斜杠命令（`/new` `/list` `/resume` `/exit`，复用 `handle_command`）、`!cmd` 终端命令与任务启动；`on_option_list_option_selected` 从会话列表恢复会话。
-- `!cmd` 终端命令：输入栏以 `!` 开头即直接执行 shell 命令（用户主动命令，不走 policy）；后台线程 `subprocess.run(shell=True, timeout=120)`，busy 互斥（运行中拒接新任务/命令），结果回显到对话区并标注 `[exit <code>]` / `[command timed out after 120s]`。
-- 子智能体运行标注：`_on_tool_start` 对 `dispatch_subagent` 追加 `[subagent] 子智能体运行中…` 行；`_on_tool` 完成时改标 `[subagent] ✓ 完成`（不回显子报告）。
+- `format_user / format_assistant / format_tool / _append_tool_line / _line_style` — 纯函数：对话行格式化与按前缀着色（user cyan、tool dim、use_skill magenta、dispatch_subagent bold cyan、subagent yellow/green、skill 加载 magenta/✓ green/✗ red、stopped yellow、session magenta），便于离线测试。
+- `CodeAgentApp(session, store, workspace=None, *, model="")` — Textual 应用：Header + StatusBar + Horizontal(ConversationLog + SessionList) + PromptInput + Footer；绑定 Ctrl+Q（退出）/ Ctrl+N（新建会话）/ Ctrl+L（切换会话列表面板）/ Ctrl+S（技能选择弹窗）/ Ctrl+P（noop 且 `show=False` 彻底隐藏，Footer 不再显示）；`COMMANDS=()` + `ENABLE_COMMAND_PALETTE=False` 移除命令面板；`on_input_submitted` 处理斜杠命令（`/new` `/list` `/resume` `/exit`，复用 `handle_command`）、`!cmd` 终端命令与任务启动；`on_option_list_option_selected` 从会话列表恢复会话；`action_choose_skill` 弹出技能选择（选中回调派发"请加载技能 <name>"任务）。
+- `!cmd` 命令模式：`PromptInput.on_input_changed` 检测到输入以 `!` 开头即切换 `command-mode` 类（输入框边框变 warning 色）并改占位符 `❯ shell: 输入命令（回车执行）`，脱离后复原——`!` 开头直接执行 shell 命令（用户主动命令，不走 policy）；后台线程 `subprocess.run(shell=True, timeout=120)`，busy 互斥（运行中拒接新任务/命令），结果回显到对话区并标注 `[exit <code>]` / `[command timed out after 120s]`。
+- skill 加载标注：`_on_tool_start` 对 `use_skill` 追加 `[skill] 加载 <name>…` 行（`_line_style` magenta）；`_on_tool` 完成时改标 `[skill] ✓ <name>`（绿）/ `[skill] ✗ <name>`（红）。子智能体运行标注：`_on_tool_start` 对 `dispatch_subagent` 追加 `[subagent] 子智能体运行中…` 行；`_on_tool` 完成时改标 `[subagent] ✓ 完成`（不回显子报告）。
+- `SkillScreen`（模态弹窗，ADR-022）：Esc 取消退出；`SkillList` 列出可用技能（name + description），↑↓ 选择、Enter 确认，`on_option_list_option_selected` `event.stop()` 防冒泡后 `dismiss` 选中技能；回调经 `action_choose_skill` → `_on_skill_chosen` 派发技能任务。
 - `_on_assistant_start`/`_on_delta`/`_on_done`：每回合 LLM 调用前新建 `assistant:` 行并重钉索引，流式增量就地刷新该行，回合结束用最终文本定型——修复多轮文本合并进第一行的问题。
 - `action_toggle_sessions`：切换会话列表面板后重渲染 body 并钳制滚动偏移（`scroll_to(y=min(...))`），修复滚动后布局重叠。
-- `AgentWorker(app, session, *, on_delta, on_tool, on_done, on_ask=None, on_ask_timeout=None, on_assistant_start=None, on_tool_start=None)` — 后台线程执行 `session.run_task`（含 `_ask` 权限询问阻塞等待输入栏应答），所有 UI 更新经 `app.call_from_thread` 桥回主线程，保证 UI 始终响应；`on_assistant_start`/`on_tool_start` 经桥转发（分别对应每回合 / 每工具调用的运行态标注）。
-- `StatusBar / ConversationLog / SessionList / PromptInput` — 自定义控件：状态栏（工作区/model/session/运行态）、可滚动对话日志（滚轮/PageUp/PageDown，近底自动跟随可回看）、会话列表面板（Ctrl+L 切换）、输入栏（含权限 ask 就地确认）。
+- `AgentWorker(app, session, *, on_delta, on_tool, on_done, on_ask=None, on_ask_timeout=None, on_assistant_start=None, on_tool_start=None)` — 后台线程执行 `session.run_task`（含 `_ask` 权限询问阻塞等待输入栏应答），所有 UI 更新经 `app.call_from_thread` 桥回主线程，保证 UI 始终响应；`on_assistant_start`/`on_tool_start` 经桥转发（分别对应每回合 / 每工具调用的运行态标注，`on_tool_start(name, arguments)` 携参）。
+- `StatusBar / ConversationLog / SessionList / SkillList / PromptInput / SkillScreen` — 自定义控件：状态栏（工作区/model/session/运行态）、可滚动对话日志（滚轮/PageUp/PageDown，近底自动跟随可回看）、会话列表面板（Ctrl+L 切换）、技能列表面板（Ctrl+S 弹窗）、输入栏（含权限 ask 就地确认 + `!` 命令模式状态反馈）。
 
 ### llm.py
 - `LLMClient(*, base_url, api_key, model, timeout=300.0, max_retries=3, debug=False)` — 配置来自环境变量 / `.env` / 命令行。
@@ -120,7 +121,7 @@ loop:                                             │
 - `_dispatch_subagent(arguments) -> ToolResult` — 构造子会话（继承 workdir/llm/policy/interact/skills，`max_iterations=SUBAGENT_MAX_ITERATIONS=10`，`allow_subagent=False`，不带 store/workspace 故不持久化）跑同步嵌套循环，只回传最终报告（空报告回传 status，按 8000 字符截断）。
 - 子智能体阉割派遣为双层强制、深度恒 1：① 子会话工具列表不含 `dispatch_subagent` schema（模型不可见）；② `_run_tool` 运行时对 `allow_subagent=False` 会话的 `dispatch_subagent` 调用直接返回 `ToolResult(ok=False)` 拒绝。
 - 权限继承：`policy`/`interact` 透传给子会话，`--deny`/`--ask` 规则对子智能体同样生效，防止绕过权限；子会话 system prompt 追加 `SUBAGENT_PROMPT_EXTRA`（subagent 指示）。
-- `run_task(task, on_delta=None, on_tool=None, on_assistant_start=None, on_tool_start=None) -> RunResult` — 主循环；`on_delta` 流式增量展示；`on_assistant_start` 每回合 LLM 调用前回调（TUI 用于新建 assistant 行）；`on_tool_start(name)` 每工具调用前回调（TUI 用于子智能体运行标注）；`on_tool` 回调 `(name, ToolResult)` 逐工具调用；`RunResult` 含 `final_text/iterations/finished/reason`。
+- `run_task(task, on_delta=None, on_tool=None, on_assistant_start=None, on_tool_start=None) -> RunResult` — 主循环；`on_delta` 流式增量展示；`on_assistant_start` 每回合 LLM 调用前回调（TUI 用于新建 assistant 行）；`on_tool_start(name, arguments)` 每工具调用前回调（携参，TUI 用于子智能体运行标注与 skill 加载标注）；`on_tool` 回调 `(name, ToolResult)` 逐工具调用；`RunResult` 含 `final_text/iterations/finished/reason`。
 - 终止条件（三条）：无 tool_calls（`complete`）／达到 `max_iterations`／连续失败（工具或 LLM 错误）达 3 次。
 - 错误恢复：工具异常包装为 `ToolResult(ok=False)` 回传模型；`LLMError` 注入修复提示并计数，达阈值优雅终止。
 
