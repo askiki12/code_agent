@@ -16,7 +16,7 @@
 | `skills.py` | 技能库：SkillRegistry（项目+用户级 SKILL.md 扫描/加载） | 无（纯逻辑，标准库） |
 | `llm.py` | OpenAI 兼容 API 调用（流式）、响应/工具调用解析、重试 | requests |
 | `web.py` | 网络检索：公网 URL 校验（SSRF）、HTML 文本提取、关键词搜索（DDG Lite）、唯一联网点 fetch/search（session 可注入） | requests |
-| `tui.py` | rich 终端界面：run_tui（状态栏/对话区/输入栏，单线程 Live）、format_* 格式化、权限 ask 渲染 | rich |
+| `tui/` 包 | Textual 终端界面：app.py（CodeAgentApp 全屏应用）、widgets.py（StatusBar/ConversationLog/SessionList/PromptInput）、worker.py（AgentWorker 后台线程 + call_from_thread 桥）；format_*/_line_style 纯函数 | textual, rich |
 
 ## 2. 数据流
 
@@ -51,6 +51,13 @@ loop:                                             │
 - `handle_command(command, session, store) -> (keep: bool, out: list[str])` — 交互斜杠命令纯函数（`/new` `/list` `/resume` `/exit`），cli 与 tui 共用，便于测试。
 - `_use_tui() -> bool` — `stdout.isatty()` 且 `NO_TUI` 未设置；`--interactive` 时 TTY 进 TUI，非 TTY 或 `NO_TUI=1` 回退纯文本 input() 循环。
 - `_run(session, task)` — 一次性任务与纯文本交互共用的流式打印。
+
+### tui/ 包（Textual 全屏 TUI，ADR-020）
+- `run_tui(session, store, workspace=None, *, model="") -> None` — 构造并启动 `CodeAgentApp`；签名与 rich 版一致，cli 零改动。
+- `format_user / format_assistant / format_tool / _append_tool_line / _line_style` — 纯函数：对话行格式化与按前缀着色（user cyan、tool dim、stopped yellow、session magenta），便于离线测试。
+- `CodeAgentApp(session, store, workspace=None, *, model="")` — Textual 应用：Header + StatusBar + Horizontal(ConversationLog + SessionList) + PromptInput + Footer；绑定 Ctrl+Q（退出）/ Ctrl+N（新建会话）/ Ctrl+L（切换会话列表面板）；`on_input_submitted` 处理斜杠命令（`/new` `/list` `/resume` `/exit`，复用 `handle_command`）与任务启动；`on_option_list_option_selected` 从会话列表恢复会话。
+- `AgentWorker(app, session, *, on_delta, on_tool, on_done, on_ask=None)` — 后台线程执行 `session.run_task`（含 `_ask` 权限询问阻塞等待输入栏应答），所有 UI 更新经 `app.call_from_thread` 桥回主线程，保证 UI 始终响应。
+- `StatusBar / ConversationLog / SessionList / PromptInput` — 自定义控件：状态栏（工作区/model/session/运行态）、可滚动对话日志（滚轮/PageUp/PageDown，近底自动跟随可回看）、会话列表面板（Ctrl+L 切换）、输入栏（含权限 ask 就地确认）。
 
 ### llm.py
 - `LLMClient(*, base_url, api_key, model, timeout=300.0, max_retries=3, debug=False)` — 配置来自环境变量 / `.env` / 命令行。

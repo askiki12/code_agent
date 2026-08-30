@@ -5,7 +5,7 @@
 ## 环境依赖
 
 - **uv**（>= 0.4）：环境与依赖管理；Python 版本由 uv 自动托管（>= 3.11），无需系统预装 Python 包。
-- **运行时依赖**：`requests>=2.31` + `rich>=13`。
+- **运行时依赖**：`requests>=2.31` + `rich>=13` + `textual>=0.80`。
 - **开发依赖**：`pytest>=8`（声明于 `pyproject.toml` 的 `[dependency-groups].dev`）。
 - **版本锁定**：`uv.lock`（已入库）——任何机器 `uv sync` 得到完全一致的环境。
 - 无需 Docker / conda / 其它系统级依赖。
@@ -34,7 +34,7 @@ uv run python -m code_agent --help
 # 一次性任务
 uv run python -m code_agent --prompt "把 tests/ 里的测试全部跑通"
 
-# 交互式对话（同一会话保持上下文；TTY 下进入 rich TUI，状态栏+对话区+输入栏）
+# 交互式对话（同一会话保持上下文；TTY 下进入 Textual 全屏 TUI）
 uv run python -m code_agent --interactive
 #   非 TTY 或 NO_TUI=1 时自动回退纯文本输入
 ```
@@ -44,7 +44,7 @@ uv run python -m code_agent --interactive
 | 参数 | 说明 | 默认 |
 |---|---|---|
 | `--prompt` | 一次性任务 | — |
-| `-i` / `--interactive` | 交互式模式（TTY 下 rich TUI，`NO_TUI=1` 或非 TTY 回退纯文本） | — |
+| `-i` / `--interactive` | 交互式模式（TTY 下 Textual 全屏 TUI，`NO_TUI=1` 或非 TTY 回退纯文本） | — |
 | `--workdir <dir>` | agent 工作目录 | 当前目录 |
 | `--model` / `--base-url` / `--api-key` | 覆盖环境变量 / `.env` | env → 内置默认 |
 | `--max-iterations <n>` | 最大循环轮次 | 20 |
@@ -56,10 +56,21 @@ uv run python -m code_agent --interactive
 
 交互模式内置斜杠命令：`/new`（新建会话）、`/list`（列出）、`/resume <id>`（恢复）、`/exit`（退出）。
 
+### TUI 快捷键（`--interactive` TTY 全屏）
+
+| 快捷键 | 功能 |
+|---|---|
+| `Ctrl+Q` | 退出 |
+| `Ctrl+N` | 新建会话（清空对话区） |
+| `Ctrl+L` | 切换会话列表面板（点击恢复会话） |
+
+- 对话区可滚动：滚轮 / `PageUp` / `PageDown`；近底自动跟随流式输出，向上可回看历史。
+- 状态栏显示工作区 / model / session / 运行状态；流式输出与工具行实时刷新；权限 ask 在输入栏就地确认（y/N）。
+
 ## 测试与验证
 
 ```bash
-uv run pytest tests/ -v      # 全量测试（当前 239 个，全部离线，无需 API key）
+uv run pytest tests/ -v      # 全量测试（当前 251 个，全部离线，无需 API key）
 ```
 
 ## 功能特性
@@ -88,8 +99,8 @@ code_agent/
 │   ├── permissions.py     # 权限模型（Policy：三态/白名单/doom_loop）
 │   ├── skills.py          # 技能库（SkillRegistry）
 │   ├── web.py             # 网络检索：公网校验/文本提取/fetch/search
-│   └── tui.py             # rich 终端界面：run_tui（状态栏/对话区/输入栏）、format_* 格式化
-├── tests/                 # 239 个离线测试（pytest）
+│   └── tui/               # Textual 终端界面：app.py（CodeAgentApp）、widgets.py（控件）、worker.py（后台线程桥）、format_* 纯函数
+├── tests/                 # 251 个离线测试（pytest）
 ├── docs/                  # 设计/架构/工具/上下文/开发文档 —— 接手者必读
 ├── pyproject.toml         # 依赖与元数据声明
 └── uv.lock                # 环境版本锁定

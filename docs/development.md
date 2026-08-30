@@ -19,9 +19,9 @@ uv run python -m code_agent --help
 
 - 环境位置：`code_agent/.venv/`（已 gitignore）。
 - 可复现性：`uv.lock` 锁定精确版本，已入库；任何机器 `uv sync` 得到一致环境。
-- 依赖声明：运行依赖在 `pyproject.toml` 的 `[project]`（requests + rich），测试依赖在 `[dependency-groups].dev`（pytest）。
+- 依赖声明：运行依赖在 `pyproject.toml` 的 `[project]`（requests + rich + textual），测试依赖在 `[dependency-groups].dev`（pytest）。
 - 新增依赖后：改 `pyproject.toml` → `uv sync`（自动更新 `uv.lock`）。
-- 不要求系统 Python 预装 `requests`/`rich`/`pytest`；环境由 uv 完全隔离。
+- 不要求系统 Python 预装 `requests`/`rich`/`textual`/`pytest`；环境由 uv 完全隔离。
 - 配置 API（推荐 `.env`，已 gitignore，不会入库）：
 
 ```bash
@@ -55,8 +55,8 @@ uv run python -m code_agent --interactive
 全部参数（`uv run python -m code_agent --help` 查看）：
 
 - `--prompt <task>`：一次性任务。
-- `-i` / `--interactive`：交互式模式（同一会话保持上下文）。TTY 下自动进入 **rich TUI**（状态栏 + 对话区 + 输入栏，单线程 Live）；`NO_TUI=1` 或非 TTY 回退纯文本 `input()` 循环。
-- TUI 行为：顶部状态栏（工作区 / model / session / 运行状态）、中部对话区（user/assistant/tool 行）、底部输入栏；斜杠命令（`/new` `/list` `/resume` `/exit`）与纯文本一致；运行中禁用输入；权限 ask 在输入栏就地确认（y/N）。
+- `-i` / `--interactive`：交互式模式（同一会话保持上下文）。TTY 下自动进入 **Textual 全屏 TUI**；`NO_TUI=1` 或非 TTY 回退纯文本 `input()` 循环。
+- TUI 行为：顶部状态栏（工作区 / model / session / 运行状态）、中部可滚动对话区（滚轮 / PageUp / PageDown，流式增量更新，近底自动跟随、向上可回看）、右侧会话列表面板（Ctrl+L 切换，选项点击恢复会话）、底部输入栏；快捷键 Ctrl+Q（退出）/ Ctrl+N（新建会话）/ Ctrl+L（会话列表）；运行中任务在后台线程执行（UI 始终响应）；工具行与 `[agent] stopped`/`[session ...]` 行色彩分层；权限 ask 在输入栏就地确认（y/N）。
 - `--workdir <dir>`：agent 工作目录（默认当前目录）。
 - `--model <model>` / `--base-url <url>` / `--api-key <key>`：覆盖环境变量 / `.env`。
 - `--max-iterations <n>`：最大循环轮次（默认 20）。
@@ -74,14 +74,17 @@ uv run python -m code_agent --interactive
 ## 3. 测试
 
 - 框架：`pytest`（经 `uv run`）。
-- 目录：`tests/`（当前 239 个用例，全部离线，无需 API key）。
+- 目录：`tests/`（当前 251 个用例，全部离线，无需 API key）。
   - `test_smoke.py`：包可导入、版本号。
   - `test_tools.py`：九个工具的本地执行用例（含 glob/grep）。
   - `test_llm_parse.py`：tool_calls 响应解析（含异常格式）。
   - `test_context.py`：消息维护、token 估算、裁剪后结构一致性。
   - `test_agent.py`：用 mock 模型跑通完整循环（含终止条件与错误恢复、dispatch_subagent 子智能体派遣/阉割双层强制/权限继承用例，不含真实 API）。
   - `test_cli.py`：`.env` 加载、缺 key 报错、一次性任务入口。
-  - `test_tui.py`：format_* 格式化纯函数、_append_tool_line、run_tui 冒烟桩（StubConsole/StubLive 离线跑通 on_delta/on_tool 回调）。
+  - `test_tui.py`：format_*/_append_tool_line/_line_style 纯函数、run_tui 冒烟桩（StubConsole/StubLive 离线跑通 on_delta/on_tool 回调）。
+  - `test_tui_widgets.py`：ConversationLog/SessionList 控件（append/update/clear、行配色 `_line_style`、会话列表刷新）。
+  - `test_tui_worker.py`：AgentWorker 后台线程与 call_from_thread 桥（流式 on_delta/on_tool + on_done，离线 mock 模型）。
+  - `test_tui_app.py`：CodeAgentApp 应用（任务提交渲染 user/assistant 行、Ctrl+N 新建会话清空对话，离线 mock 模型）。
   - `test_session.py`：SessionStore 创建/保存/加载/列表/坏文件容错。
   - `test_workspace.py`：工作区初始化/幂等/损坏容错/touch_session。
   - `test_permissions.py`：规则解析/三态/只读白名单/doom_loop/交互询问。
@@ -109,7 +112,7 @@ uv run pytest tests/ -v
 ## 6. 演示准备
 
 - 演示任务建议：一个**真实且可快速验证**的编程任务（如：修一个 bug 并跑通测试）。
-- 演示可用 **TUI 交互展示**（`--interactive`，状态栏/对话区/输入栏，更直观）；也可先演示纯文本一次性任务。
+- 演示可用 **TUI 交互展示**（`--interactive`，Textual 全屏：可滚动对话/会话列表面板/快捷键，更直观）；也可先演示纯文本一次性任务。
 - 视频脚本要点：
   1. 展示一次性任务输入与流式输出；
   2. 展示 agent 自主调用 read_file / edit_file / run_command；
