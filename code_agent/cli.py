@@ -162,7 +162,8 @@ def main(argv: list[str] | None = None) -> int:
         _run(session, args.prompt)
         return 0
     if _use_tui():
-        from code_agent.tui import run_tui  # noqa: F401  (Task 5 落地接线)
+        from code_agent.tui import run_tui
+        run_tui(session, store, workspace, model=llm.model)
         return 0
     if workspace is not None:
         sessions = store.list_sessions()
