@@ -53,3 +53,39 @@ def test_worker_streams_and_done(workdir):
     assert done and done[0].final_text == "hello"
     assert "".join(deltas) == "Hel" + "lo"
     assert app.ui_ops  # 桥被调用
+
+
+def test_worker_bridges_new_callbacks(workdir):
+    from code_agent.llm import ToolCall
+    from code_agent.tui.worker import AgentWorker
+
+    class _LLM:
+        def __init__(self):
+            self.n = 0
+
+        def chat(self, messages, tools=None, on_delta=None):
+            self.n += 1
+            if self.n == 1:
+                return LLMResponse(content="", tool_calls=[ToolCall(id="c1", name="read_file", arguments={"path": "a.txt"})])
+            return LLMResponse(content="done", tool_calls=[])
+
+    import os
+    open(os.path.join(workdir, "a.txt"), "w").write("hello")
+    session = _make_session(workdir, _LLM())
+    app = _FakeApp()
+    starts, tool_starts = [], []
+
+    w = AgentWorker(
+        app, session,
+        on_delta=lambda c: None,
+        on_tool=lambda n, r: None,
+        on_done=lambda r: None,
+        on_assistant_start=lambda: starts.append(1),
+        on_tool_start=lambda n: tool_starts.append(n),
+    )
+    w.start("hi")
+    deadline = time.time() + 5
+    while len(starts) < 2 and time.time() < deadline:
+        time.sleep(0.02)
+    assert len(starts) == 2
+    assert tool_starts == ["read_file"]

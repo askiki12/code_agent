@@ -5,7 +5,7 @@ import threading
 
 
 class AgentWorker:
-    def __init__(self, app, session, *, on_delta, on_tool, on_done, on_ask=None, on_ask_timeout=None) -> None:
+    def __init__(self, app, session, *, on_delta, on_tool, on_done, on_ask=None, on_ask_timeout=None, on_assistant_start=None, on_tool_start=None) -> None:
         self.app = app
         self.session = session
         self._on_delta = on_delta
@@ -13,6 +13,8 @@ class AgentWorker:
         self._on_done = on_done
         self._on_ask = on_ask
         self._on_ask_timeout = on_ask_timeout
+        self._on_assistant_start = on_assistant_start
+        self._on_tool_start = on_tool_start
         self._thread: threading.Thread | None = None
 
     def start(self, task: str) -> None:
@@ -26,7 +28,13 @@ class AgentWorker:
         try:
             if self._on_ask is not None:
                 self.session.ask = self._ask
-            result = self.session.run_task(task, on_delta=self._delta, on_tool=self._tool)
+            result = self.session.run_task(
+                task,
+                on_delta=self._delta,
+                on_tool=self._tool,
+                on_assistant_start=self._assistant_start,
+                on_tool_start=self._tool_start,
+            )
         except Exception as e:  # noqa: BLE001
             from code_agent.agent import RunResult
             result = RunResult(final_text="", iterations=0, finished=False, reason=f"worker crash: {type(e).__name__}: {e}")
@@ -40,6 +48,15 @@ class AgentWorker:
 
     def _tool(self, name, res) -> None:
         self.app.call_from_thread(lambda: self._on_tool(name, res))
+
+    def _assistant_start(self) -> None:
+        if self._on_assistant_start is not None:
+            self.app.call_from_thread(self._on_assistant_start)
+
+    def _tool_start(self, name: str) -> None:
+        on_tool_start = self._on_tool_start
+        if on_tool_start is not None:
+            self.app.call_from_thread(lambda: on_tool_start(name))
 
     def _ask(self, prompt: str) -> str:
         ev = threading.Event()
