@@ -49,35 +49,30 @@ TUI 打磨迭代后又收到三点反馈 + 一项新需求：
   - `_on_tool(name, res)`：`use_skill` → 更新 `[skill] ✓ <name>` / `✗ <name>`。
 - `__init__.py` `_line_style`：`[skill]` 行含 `✓` → `"green"`、含 `✗` → `"red"`、否则 `"magenta"`。
 
-## 6. Ctrl+S 技能面板
+## 6. Ctrl+S 技能选择弹窗（模态）
 
-- `widgets.py` 新 `SkillList(OptionList)`：
-  - `refresh_from(registry)`：`registry.scan()` 填充 `Option(f"{name}  {description}", id=name)`。
-- `app.py` compose 右侧列改为：
-  ```python
-        with Horizontal():
-            yield ConversationLog(id="log")
-            with Vertical(id="side"):
-                yield SessionList(id="sessions")
-                yield SkillList(id="skills")
-  ```
-  CSS：`#sessions`/`#skills` 默认 `display:none`；`.visible` 显示（各自独立）。
-- `BINDINGS` 追加 `Binding("ctrl+s", "toggle_skills", "Skills")`。
-- `action_toggle_skills`：busy 守卫；`session.skills` 为空 → `notify("无可用技能")`；否则切 `#skills` visible + `refresh_from`。
-- `on_option_list_option_selected` 按 `event.option_list.id` 路由：
-  - `"sessions"`：现状（load_session + reload）。
-  - `"skills"`：取 `event.option.id`（技能名）→ 组装任务：
-    - 输入框有值（`#input.value.strip()`）→ `task = f"请使用技能 {name} 完成：{input_text}"`；
-    - 空 → `task = f"请加载技能 {name} 并按其指令说明能做什么"`；
-    - `_start_task(task)`（busy 守卫已在 on_option_list 前）。
+> 用户裁决：不用右侧边栏（避免与 Ctrl+L 会话侧栏双面板拥挤/布局冲突），改用**模态弹窗**——Ctrl+S 弹出居中技能选择框，方向键选择、回车使用、**Esc 退出**。
+
+- `app.py` 新增 `SkillScreen(Screen)`：
+  - `compose()`：居中 `Panel`（标题"可用技能"）内含 `OptionList`（`SkillList` 部件，`refresh_from(registry)` 填充 `Option(f"{name}  {description}", id=name)`）。
+  - `BINDINGS`：`Binding("escape", "dismiss", "Cancel")`——Esc 关闭；回车/选中由 OptionList 的 `OptionSelected` 处理。
+  - `on_option_list_option_selected`：`self.dismiss(event.option.id)`（技能名）。
+- `app.py`：
+  - `BINDINGS` 追加 `Binding("ctrl+s", "toggle_skills", "Skills")`（或 `action_choose_skill`）。
+  - `action_choose_skill`：busy 守卫；`session.skills` 为空 → `notify("无可用技能")`；否则 `self.push_screen(SkillScreen(registry), callback=self._on_skill_chosen)`。
+  - `_on_skill_chosen(name)`（Screen 关闭后回调）：
+    - `name is None`（Esc 取消）→ 不动作；
+    - 否则：输入框有值（`#input.value.strip()`）→ `task = f"请使用技能 {name} 完成：{input_text}"`；空 → `task = f"请加载技能 {name} 并按其指令说明能做什么"`；清空输入框 → `_start_task(task)`。
+- 右侧列布局保持 `Horizontal(ConversationLog, SessionList)`（SessionList 单独在右，无冲突）。
 - 提示词方式使用 skill：已有（agent 遇提示自行调 `use_skill`），不改动。
 
 ## 7. 错误处理
 
 | 场景 | 行为 |
 |---|---|
-| 无可用技能按 Ctrl+S | `notify("无可用技能")`，不开面板 |
-| 运行中按 Ctrl+S / 选技能 | busy 守卫拒绝（notify） |
+| 无可用技能按 Ctrl+S | `notify("无可用技能")`，不开弹窗 |
+| 运行中按 Ctrl+S / 选择技能 | busy 守卫拒绝（notify） |
+| Esc 关闭弹窗 | `dismiss(None)`，不派发任务 |
 | 技能名含特殊字符 | 仅作字符串拼入任务，无路径面 |
 | `!` 模式输入清空/改回 | `on_input_changed` 还原类与 placeholder |
 
@@ -89,9 +84,10 @@ TUI 打磨迭代后又收到三点反馈 + 一项新需求：
 
 **test_tui_app.py（扩展）**
 3. `Binding("ctrl+p", ..., show=False)`：断言该 binding 的 `show is False`。
-4. `action_toggle_skills`：有技能 → `#skills` 切 visible + 选项填充；无技能 → notify（冒烟不崩）。
-5. 技能选中：注入含 skill 的 session.skills 假 registry + FakeLLM → 在 `#skills` 选中技能 → 断言对话区出现 `> user: 请使用技能 <name> 完成：`（或加载说明），且 FakeLLM 收到该任务。
-6. `on_tool_start` 含参：use_skill 工具调用 → 对话区出现 `[skill] 加载 <name>…` → on_tool 后 `[skill] ✓ <name>`。
+4. `action_choose_skill`：有技能 → `push_screen(SkillScreen)` 被调用（冒烟不崩）；无技能 → notify。
+5. 技能选中：注入含 skill 的假 registry + FakeLLM → Ctrl+S 打开弹窗 → 选中技能 → `_on_skill_chosen(name)` 回调 → 断言对话区出现 `> user: 请使用技能 <name> 完成：`（或加载说明），且 FakeLLM 收到该任务。
+6. Esc 关闭：打开弹窗 → press escape → 弹窗关闭，无任务派发。
+7. `on_tool_start` 含参：use_skill 工具调用 → 对话区出现 `[skill] 加载 <name>…` → on_tool 后 `[skill] ✓ <name>`。
 
 **test_tui.py（扩展）**
 7. `_line_style`：`[skill] 加载 x…` → 品红；`[skill] ✓ x` → 绿；`[skill] ✗ x` → 红。
@@ -106,9 +102,9 @@ TUI 打磨迭代后又收到三点反馈 + 一项新需求：
 ## 9. 文档同步
 
 - `docs/architecture.md`：`run_task` on_tool_start 签名（name, arguments）；TUI 补 `!` 命令模式、Ctrl+S 技能面板、skill 标注。
-- `docs/development.md`：快捷键表加 Ctrl+S；`!` 命令模式说明；skill 面板用法。
+- `docs/development.md`：快捷键表加 Ctrl+S（技能选择弹窗）；`!` 命令模式说明。
 - `docs/design.md`：§6 勾选；§8 追加（19）；测试计数实际值。
-- `README.md`：快捷键表加 Ctrl+S；skill 面板说明；计数实际值。
+- `README.md`：快捷键表加 Ctrl+S（技能弹窗）；skill 面板说明；计数实际值。
 - `code_agent/docs/superpowers/specs/2026-08-30-tui-final-design.md`（本文档）。
 - 工作区根 `.agent/03-decisions.md`：ADR-022（不入库）。
 
@@ -117,6 +113,6 @@ TUI 打磨迭代后又收到三点反馈 + 一项新需求：
 1. `agent.py`/`worker.py`：`on_tool_start(name, arguments)` 扩展 + 测试（TDD）
 2. `__init__.py` `_line_style` `[skill]` 样式 + `app.py` skill 加载标注（TDD）
 3. `widgets.py` `SkillList` + `PromptInput` 命令模式 + 测试（TDD）
-4. `app.py`：Ctrl+P show=False + Ctrl+S 面板 + 技能选中派发 + 测试（TDD）
+4. `app.py`：Ctrl+P show=False + `SkillScreen` 模态弹窗（Ctrl+S 打开/Esc 关闭/选中回调派发）+ 测试（TDD）
 5. 文档同步 + ADR-022
 6. 全量回归 + 真实冒烟 + 凭据复核 + 提交
