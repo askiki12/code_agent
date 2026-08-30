@@ -37,5 +37,5 @@ def _line_style(line: str) -> str:
 
 
 def run_tui(session, store, workspace=None, *, model: str = "") -> None:
-    # Task 5 委托 CodeAgentApp；此处暂不允许实际进入（避免误导）。
-    raise NotImplementedError("run_tui wired in Task 5")
+    from code_agent.tui.app import CodeAgentApp
+    CodeAgentApp(session, store, workspace, model=model).run()
