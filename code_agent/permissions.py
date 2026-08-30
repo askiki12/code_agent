@@ -99,7 +99,7 @@ class Policy:
         key = (tool, _match_text(tool, arguments))
         return self._same_streak(key) >= DOOM_LOOP_LIMIT - 1
 
-    def check(self, tool: str, arguments: dict, interact: bool = False) -> PermissionResult:
+    def check(self, tool: str, arguments: dict, interact: bool = False, ask=None) -> PermissionResult:
         text = _match_text(tool, arguments)
         key = (tool, text)
         if self.would_loop(tool, arguments):
@@ -110,8 +110,9 @@ class Policy:
             return PermissionResult("deny", "denied by rule")
         if self._matches(self._ask, tool, text):
             if interact:
+                asker = ask if ask is not None else input
                 try:
-                    decision = "allow" if input(
+                    decision = "allow" if asker(
                         f"[permission] {tool}({text[:60]!r}) allowed? [y/N] "
                     ).strip().lower() == "y" else "deny"
                 except (EOFError, OSError):

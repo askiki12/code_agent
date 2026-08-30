@@ -477,3 +477,29 @@ def test_agent_dispatch_does_not_persist_sub_session(workdir, tmp_path):
     result = session.run_task("main task")
     assert result.finished and result.final_text == "done"
     assert len(store.list_sessions()) == 1
+
+
+def test_agent_dispatch_passes_ask_to_sub(workdir):
+    from code_agent.permissions import Policy
+    ask_calls = []
+
+    def fake_ask(prompt):
+        ask_calls.append(prompt)
+        return "y"
+
+    run = LLMResponse(
+        content="",
+        tool_calls=[ToolCall(id="s1", name="run_command", arguments={"command": "echo hi"})],
+    )
+    dispatch = LLMResponse(
+        content="",
+        tool_calls=[ToolCall(id="c1", name="dispatch_subagent", arguments={"task": "sub task"})],
+    )
+    llm = FakeLLM([dispatch, run, LLMResponse(content="sub done", tool_calls=[]), LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(
+        workdir=workdir, llm=llm, max_iterations=10,
+        policy=Policy(ask=["run_command:*"]), interact=True, ask=fake_ask,
+    )
+    result = session.run_task("main task")
+    assert result.finished and result.final_text == "done"
+    assert ask_calls and "[permission]" in ask_calls[0]

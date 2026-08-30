@@ -79,3 +79,25 @@ def test_trailing_wildcard_matches_bare_command():
     assert p.check("run_command", {"command": "git push"}).decision == "deny"
     assert p.check("run_command", {"command": "git push origin main"}).decision == "deny"
     assert p.check("run_command", {"command": "git status"}).decision == "allow"
+
+
+def test_check_ask_uses_injected_callback():
+    from code_agent.permissions import Policy
+    p = Policy(ask=["run_command:*"])
+    seen = []
+
+    def fake_ask(prompt):
+        seen.append(prompt)
+        return "y"
+
+    r = p.check("run_command", {"command": "echo hi"}, interact=True, ask=fake_ask)
+    assert r.decision == "allow"
+    assert seen and "[permission]" in seen[0]
+
+
+def test_check_ask_default_uses_input(monkeypatch):
+    from code_agent.permissions import Policy
+    p = Policy(ask=["run_command:*"])
+    monkeypatch.setattr("builtins.input", lambda prompt: "n")
+    r = p.check("run_command", {"command": "echo hi"}, interact=True)
+    assert r.decision == "deny"

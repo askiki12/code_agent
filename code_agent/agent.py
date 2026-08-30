@@ -97,6 +97,7 @@ class AgentSession:
         workspace: Workspace | None = None,
         policy: Policy | None = None,
         interact: bool = False,
+        ask: Callable[[str], str] | None = None,
         skills: SkillRegistry | None = None,
         allow_subagent: bool = True,
     ) -> None:
@@ -109,6 +110,7 @@ class AgentSession:
         self.workspace = workspace
         self.policy = policy
         self.interact = interact
+        self.ask = ask
         self.session_id = session_id
         self.skills = skills
         self.allow_subagent = allow_subagent
@@ -233,7 +235,7 @@ class AgentSession:
         if tc.name == "use_skill" and self.skills is not None:
             return self._use_skill(tc.arguments)
         if self.policy is not None:
-            result = self.policy.check(tc.name, tc.arguments, interact=self.interact)
+            result = self.policy.check(tc.name, tc.arguments, interact=self.interact, ask=self.ask)
             if result.decision == "deny":
                 reason = result.reason or tc.name
                 return ToolResult(ok=False, output=f"permission denied: {reason}")
@@ -266,6 +268,7 @@ class AgentSession:
                 debug=self.debug,
                 policy=self.policy,
                 interact=self.interact,
+                ask=self.ask,
                 skills=self.skills,
                 allow_subagent=False,
             )
