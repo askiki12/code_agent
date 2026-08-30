@@ -118,8 +118,6 @@ class CodeAgentApp(App):
     def _start_task(self, task: str) -> None:
         log = self.query_one("#log", ConversationLog)
         log.append(format_user(task))
-        log.append("assistant: ")
-        self._assistant_idx = len(log._lines) - 1
         self._refresh_status("running")
         self._worker = AgentWorker(
             self, self.session,
@@ -128,8 +126,14 @@ class CodeAgentApp(App):
             on_done=lambda r: self._on_done(r),
             on_ask=lambda p, resp: self._on_ask(p, resp),
             on_ask_timeout=lambda: self._clear_ask(),
+            on_assistant_start=self._on_assistant_start,
         )
         self._worker.start(task)
+
+    def _on_assistant_start(self) -> None:
+        log = self.query_one("#log", ConversationLog)
+        log.append("assistant: ")
+        self._assistant_idx = len(log._lines) - 1
 
     def _on_delta(self, chunk: str) -> None:
         log = self.query_one("#log", ConversationLog)

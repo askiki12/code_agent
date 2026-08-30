@@ -1,5 +1,6 @@
 import asyncio
 import time
+from pathlib import Path
 
 import pytest
 
@@ -16,8 +17,10 @@ class _FakeLLM:
         return LLMResponse(content="答复内容", tool_calls=[])
 
 
-def _make_app(workdir, tmp_path):
-    session = AgentSession(workdir=workdir, llm=_FakeLLM(), max_iterations=3)
+def _make_app(workdir, tmp_path, llm=None):
+    if llm is None:
+        llm = _FakeLLM()
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=3)
     store = SessionStore(str(tmp_path / "sessions"))
     return CodeAgentApp(session, store, None, model="test")
 
@@ -92,6 +95,47 @@ def test_app_ctrl_n_during_run_is_ignored(workdir, tmp_path):
             text = "".join(l.plain for l in log._lines)
             assert "worker crash" not in text
             assert "答复内容" in text
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
+
+
+def test_app_multi_round_order(workdir, tmp_path):
+    from code_agent.llm import ToolCall
+
+    Path(workdir, "a.txt").write_text("hello", encoding="utf-8")
+
+    class _LLM:
+        def __init__(self):
+            self.n = 0
+
+        def chat(self, messages, tools=None, on_delta=None):
+            self.n += 1
+            if self.n == 1:
+                if on_delta:
+                    on_delta("思考")
+                return LLMResponse(content="思考", tool_calls=[ToolCall(id="c1", name="read_file", arguments={"path": "a.txt"})])
+            if on_delta:
+                on_delta("结论")
+            return LLMResponse(content="结论", tool_calls=[])
+
+    app = _make_app(workdir, tmp_path, _LLM())
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            inp = app.query_one("#input")
+            inp.value = "任务"
+            await pilot.press("enter")
+            for _ in range(150):
+                log = app.query_one("#log")
+                if "结论" in "".join(l.plain for l in log._lines):
+                    break
+                await asyncio.sleep(0.02)
+            lines = [l.plain for l in app.query_one("#log")._lines]
+            assert lines[0].startswith("> user:")
+            assert lines[1].startswith("assistant:") and "思考" in lines[1]
+            assert lines[2].startswith("[tool] read_file")
+            assert lines[3].startswith("assistant:") and "结论" in lines[3]
             await pilot.press("ctrl+q")
 
     asyncio.run(scenario())
