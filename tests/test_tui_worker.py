@@ -81,11 +81,11 @@ def test_worker_bridges_new_callbacks(workdir):
         on_tool=lambda n, r: None,
         on_done=lambda r: None,
         on_assistant_start=lambda: starts.append(1),
-        on_tool_start=lambda n: tool_starts.append(n),
+        on_tool_start=lambda n, a: tool_starts.append((n, a)),
     )
     w.start("hi")
     deadline = time.time() + 5
     while len(starts) < 2 and time.time() < deadline:
         time.sleep(0.02)
     assert len(starts) == 2
-    assert tool_starts == ["read_file"]
+    assert tool_starts == [("read_file", {"path": "a.txt"})]

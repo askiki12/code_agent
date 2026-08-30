@@ -142,7 +142,7 @@ class AgentSession:
         on_delta: Callable[[str], None] | None = None,
         on_tool: Callable[[str, ToolResult], None] | None = None,
         on_assistant_start: Callable[[], None] | None = None,
-        on_tool_start: Callable[[str], None] | None = None,
+        on_tool_start: Callable[[str, dict], None] | None = None,
     ) -> RunResult:
         self.conversation.add_user(task)
         self._on_delta = on_delta
@@ -186,7 +186,7 @@ class AgentSession:
                 round_failed = False
                 for tc in response.tool_calls:
                     if on_tool_start is not None:
-                        on_tool_start(tc.name)
+                        on_tool_start(tc.name, tc.arguments)
                     result = self._run_tool(tc)
                     if on_tool is not None:
                         on_tool(tc.name, result)

@@ -53,10 +53,9 @@ class AgentWorker:
         if self._on_assistant_start is not None:
             self.app.call_from_thread(self._on_assistant_start)
 
-    def _tool_start(self, name: str) -> None:
-        on_tool_start = self._on_tool_start
-        if on_tool_start is not None:
-            self.app.call_from_thread(lambda: on_tool_start(name))
+    def _tool_start(self, name: str, arguments: dict) -> None:
+        fn = self._on_tool_start
+        self.app.call_from_thread(lambda: fn(name, arguments))
 
     def _ask(self, prompt: str) -> str:
         ev = threading.Event()

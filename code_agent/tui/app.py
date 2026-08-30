@@ -194,7 +194,7 @@ class CodeAgentApp(App):
         log.append("assistant: ")
         self._assistant_idx = len(log._lines) - 1
 
-    def _on_tool_start(self, name: str) -> None:
+    def _on_tool_start(self, name: str, arguments: dict) -> None:
         if name != "dispatch_subagent":
             return
         log = self.query_one("#log", ConversationLog)

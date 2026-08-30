@@ -532,8 +532,8 @@ def test_agent_on_assistant_and_tool_start_callbacks(workdir):
     result = session.run_task(
         "do it",
         on_assistant_start=lambda: starts.append(1),
-        on_tool_start=lambda n: tool_starts.append(n),
+        on_tool_start=lambda n, a: tool_starts.append((n, a)),
     )
     assert result.finished and result.final_text == "done"
     assert len(starts) == 2
-    assert tool_starts == ["read_file"]
+    assert tool_starts == [("read_file", {"path": "a.txt"})]
