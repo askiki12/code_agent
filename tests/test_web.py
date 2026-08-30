@@ -388,3 +388,59 @@ def test_parse_search_results_missing_snippet_empty_string():
 def test_parse_search_results_empty_html():
     assert parse_search_results("") == []
     assert parse_search_results("<html><body>no results here</body></html>") == []
+
+
+from code_agent.web import WebFetchError, search
+
+
+def _html_with(n):
+    rows = []
+    for i in range(1, n + 1):
+        rows.append(
+            f'<a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2F{i}" '
+            f"class='result-link'>R{i}</a>"
+        )
+    return "".join(rows)
+
+
+def test_search_success(monkeypatch):
+    _fake_dns(monkeypatch, {"lite.duckduckgo.com": ["93.184.216.34"]})
+    resp = FakeResponse(headers={"Content-Type": "text/html; charset=utf-8"}, body=_html_with(3).encode())
+    sess = FakeSession([resp])
+    results = search("python requests", session=sess)
+    assert len(results) == 3
+    assert results[0].url == "https://example.com/1"
+    assert "lite.duckduckgo.com/lite/" in sess.requests[0]
+
+
+def test_search_clamps_max_results(monkeypatch):
+    _fake_dns(monkeypatch, {"lite.duckduckgo.com": ["93.184.216.34"]})
+    resp = FakeResponse(headers={"Content-Type": "text/html; charset=utf-8"}, body=_html_with(5).encode())
+    r0 = search("q", max_results=0, session=FakeSession([resp]))
+    assert len(r0) == 1
+    resp = FakeResponse(headers={"Content-Type": "text/html; charset=utf-8"}, body=_html_with(5).encode())
+    r99 = search("q", max_results=99, session=FakeSession([resp]))
+    assert len(r99) == 5
+
+
+def test_search_retries_then_succeeds(monkeypatch):
+    _fake_dns(monkeypatch, {"lite.duckduckgo.com": ["93.184.216.34"]})
+    sess = FakeSession([
+        requests.Timeout("boom1"),
+        requests.Timeout("boom2"),
+        FakeResponse(headers={"Content-Type": "text/html; charset=utf-8"}, body=_html_with(2).encode()),
+    ])
+    results = search("q", session=sess)
+    assert len(results) == 2
+
+
+def test_search_persistent_failure(monkeypatch):
+    _fake_dns(monkeypatch, {"lite.duckduckgo.com": ["93.184.216.34"]})
+    sess = FakeSession([requests.Timeout("boom")] * 3)
+    with pytest.raises(WebFetchError, match="after 3 attempts"):
+        search("q", session=sess)
+
+
+def test_search_empty_query():
+    with pytest.raises(WebFetchError, match="query is required"):
+        search("   ")

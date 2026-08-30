@@ -320,3 +320,54 @@ def parse_search_results(html: str) -> list[SearchResult]:
     parser = _SearchParser()
     parser.feed(html)
     return parser.results
+
+
+import time
+from urllib.parse import urlencode
+
+
+def search(
+    query: str,
+    *,
+    max_results: int = SEARCH_MAX_RESULTS,
+    timeout: float = DEFAULT_TIMEOUT,
+    max_bytes: int = MAX_BYTES,
+    session=None,
+) -> list[SearchResult]:
+    """Search DuckDuckGo Lite and return parsed results. Raises WebFetchError."""
+    if not query.strip():
+        raise WebFetchError("query is required")
+    max_results = max(1, min(10, max_results))
+    close_session = session is None
+    if session is None:
+        session = requests.Session()
+    url = f"{SEARCH_BASE}?{urlencode({'q': query})}"
+    last_error: Exception | None = None
+    try:
+        for attempt in range(3):
+            try:
+                resp = _request_with_validation(session, url, timeout)
+                try:
+                    if resp.status_code != 200:
+                        raise WebFetchError(f"HTTP {resp.status_code}")
+                    content_type = resp.headers.get("Content-Type", "").lower().split(";")[0].strip()
+                    if content_type not in ("text/html",) and content_type:
+                        raise WebFetchError(f"unsupported content type: {content_type}")
+                    body = _read_limited(resp, max_bytes)
+                    charset = _guess_charset(resp.headers.get("Content-Type", ""), body)
+                    html = body.decode(charset, errors="replace")
+                    return parse_search_results(html)[:max_results]
+                finally:
+                    resp.close()
+            except WebFetchError as e:
+                last_error = e
+            except requests.RequestException as e:
+                last_error = WebFetchError(f"request failed: {e}")
+            except OSError as e:
+                last_error = WebFetchError(f"network error: {e}")
+            if attempt < 2:
+                time.sleep(1)
+        raise WebFetchError(f"search failed after 3 attempts: {last_error}")
+    finally:
+        if close_session:
+            session.close()
