@@ -80,32 +80,42 @@ def _make_store(workdir: str) -> SessionStore:
     return SessionStore(os.path.join(workdir, ".code_agent", "sessions"))
 
 
-def _handle_command(command: str, session, store: SessionStore) -> bool:
+def handle_command(command: str, session, store: SessionStore) -> tuple[bool, list[str]]:
     parts = command.split(maxsplit=1)
     cmd = parts[0]
+    out: list[str] = []
     if cmd == "/new":
         session.new_session()
-        print("New session started.")
-        return True
-    if cmd == "/list":
+        out.append("New session started.")
+    elif cmd == "/list":
         for s in store.list_sessions():
-            print(f"{s['id']}  {s['title'] or ''}  ({s['message_count']} msgs)")
-        return True
-    if cmd == "/resume":
+            out.append(f"{s['id']}  {s['title'] or ''}  ({s['message_count']} msgs)")
+    elif cmd == "/resume":
         sid = parts[1] if len(parts) > 1 else ""
         if not sid:
-            print("usage: /resume <session-id>")
-            return True
-        try:
-            session.load_session(sid)
-            print(f"Resumed session {sid}.")
-        except KeyError:
-            print(f"session not found: {sid}", file=sys.stderr)
-        return True
-    if cmd == "/exit":
-        return False
-    print(f"unknown command: {cmd}")
-    return True
+            out.append("usage: /resume <session-id>")
+        else:
+            try:
+                session.load_session(sid)
+                out.append(f"Resumed session {sid}.")
+            except KeyError:
+                out.append(f"session not found: {sid}")
+    elif cmd == "/exit":
+        return False, []
+    else:
+        out.append(f"unknown command: {cmd}")
+    return True, out
+
+
+def _handle_command(command: str, session, store: SessionStore) -> bool:
+    keep, out = handle_command(command, session, store)
+    for line in out:
+        print(line)
+    return keep
+
+
+def _use_tui() -> bool:
+    return bool(sys.stdout.isatty()) and os.environ.get("NO_TUI") is None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -150,6 +160,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if args.prompt:
         _run(session, args.prompt)
+        return 0
+    if _use_tui():
+        from code_agent.tui import run_tui  # noqa: F401  (Task 5 落地接线)
         return 0
     if workspace is not None:
         sessions = store.list_sessions()

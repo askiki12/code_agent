@@ -244,3 +244,67 @@ def test_main_interactive_policy_interact(monkeypatch, tmp_path):
     rc = main(["--interactive", "--workdir", str(tmp_path)])
     assert rc == 0
     assert captured.get("interact") is True
+
+
+def test_use_tui_tty(monkeypatch):
+    from code_agent.cli import _use_tui
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+    monkeypatch.delenv("NO_TUI", raising=False)
+    assert _use_tui() is True
+
+
+def test_use_tui_not_tty(monkeypatch):
+    from code_agent.cli import _use_tui
+    monkeypatch.setattr("sys.stdout.isatty", lambda: False)
+    monkeypatch.delenv("NO_TUI", raising=False)
+    assert _use_tui() is False
+
+
+def test_use_tui_no_tui_env(monkeypatch):
+    from code_agent.cli import _use_tui
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+    monkeypatch.setenv("NO_TUI", "1")
+    assert _use_tui() is False
+
+
+def test_handle_command_exit_and_unknown():
+    from code_agent.cli import handle_command
+    keep, out = handle_command("/exit", None, None)
+    assert keep is False and out == []
+    keep, out = handle_command("/bogus", None, None)
+    assert keep is True and out == ["unknown command: /bogus"]
+    keep, out = handle_command("/resume", None, None)
+    assert keep is True and out == ["usage: /resume <session-id>"]
+
+
+def test_handle_command_new_and_list(workdir, tmp_path):
+    from code_agent.cli import handle_command
+    from code_agent.session import SessionStore
+    store = SessionStore(str(tmp_path / "sessions"))
+    sid = store.create("t")
+
+    class _S:
+        def new_session(self):
+            self.called = True
+
+    s = _S()
+    keep, out = handle_command("/new", s, store)
+    assert keep is True and getattr(s, "called", False) and out == ["New session started."]
+
+    keep, out = handle_command("/list", None, store)
+    assert keep is True and out and sid in out[0]
+
+
+def test_handle_command_resume(workdir, tmp_path):
+    from code_agent.cli import handle_command
+    from code_agent.session import SessionStore
+    store = SessionStore(str(tmp_path / "sessions"))
+    sid = store.create("t")
+
+    class _S:
+        def load_session(self, sid):
+            self.loaded = sid
+
+    s = _S()
+    keep, out = handle_command(f"/resume {sid}", s, store)
+    assert keep is True and s.loaded == sid and out == [f"Resumed session {sid}."]
