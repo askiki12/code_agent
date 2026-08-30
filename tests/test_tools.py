@@ -3,7 +3,7 @@ from pathlib import Path
 
 from code_agent import web
 from code_agent.tools import TOOL_SCHEMAS, ToolResult, execute, truncate
-from code_agent.web import WebContent, WebFetchError
+from code_agent.web import SearchResult, WebContent, WebFetchError
 
 
 def _write(path, text):
@@ -76,6 +76,7 @@ def test_tool_schemas_have_expected_names():
     names = {s["function"]["name"] for s in TOOL_SCHEMAS}
     assert names == {
         "read_file", "write_file", "edit_file", "list_dir", "run_command", "glob", "grep", "web_fetch",
+        "web_search",
     }
 
 
@@ -419,3 +420,38 @@ def test_web_fetch_links_formatting(workdir, monkeypatch):
 def test_web_fetch_missing_url(workdir):
     r = execute("web_fetch", {}, workdir)
     assert not r.ok and "url is required" in r.output
+
+
+def test_web_search_success(workdir, monkeypatch):
+    def fake_search(query, max_results=8, *args, **kwargs):
+        return [
+            SearchResult(title="Requests docs", url="https://docs.python-requests.org/", snippet="HTTP for Humans"),
+            SearchResult(title="PyPI", url="https://pypi.org/project/requests/", snippet="Package page"),
+        ]
+
+    monkeypatch.setattr("code_agent.tools.web.search", fake_search)
+    r = execute("web_search", {"query": "python requests"}, workdir)
+    assert r.ok
+    assert "1. Requests docs" in r.output
+    assert "https://pypi.org/project/requests/" in r.output
+    assert "HTTP for Humans" in r.output
+
+
+def test_web_search_empty_results(workdir, monkeypatch):
+    monkeypatch.setattr("code_agent.tools.web.search", lambda *a, **k: [])
+    r = execute("web_search", {"query": "nothing"}, workdir)
+    assert r.ok and "(no results)" in r.output
+
+
+def test_web_search_failure(workdir, monkeypatch):
+    def boom(*a, **k):
+        raise WebFetchError("search failed after 3 attempts: request failed")
+
+    monkeypatch.setattr("code_agent.tools.web.search", boom)
+    r = execute("web_search", {"query": "x"}, workdir)
+    assert not r.ok and "web_search failed" in r.output
+
+
+def test_web_search_missing_query(workdir):
+    r = execute("web_search", {}, workdir)
+    assert not r.ok and "query is required" in r.output

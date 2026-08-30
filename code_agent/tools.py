@@ -212,6 +212,15 @@ TOOL_SCHEMAS = [
         },
         ["url"],
     ),
+    _schema(
+        "web_search",
+        "Search the web (DuckDuckGo Lite, keyless). Returns numbered results with title, real URL and snippet. Use web_fetch on a result URL for full content.",
+        {
+            "query": {"type": "string", "description": "Search query"},
+            "max_results": {"type": "integer", "description": "Max results (default 8)"},
+        },
+        ["query"],
+    ),
 ]
 
 def _write_file(args: dict, workdir: str) -> ToolResult:
@@ -570,6 +579,28 @@ def _web_fetch(args: dict, workdir: str) -> ToolResult:
     return ToolResult(ok=True, output=out, truncated=truncated)
 
 
+def _web_search(args: dict, workdir: str) -> ToolResult:
+    query = args.get("query", "")
+    if not query.strip():
+        return ToolResult(ok=False, output="query is required")
+    max_results = args.get("max_results", 8)
+    if not isinstance(max_results, int):
+        max_results = 8
+    try:
+        results = web.search(query, max_results=max_results)
+    except web.WebFetchError as e:
+        return ToolResult(ok=False, output=f"web_search failed: {e}")
+    if not results:
+        return ToolResult(ok=True, output="(no results)")
+    lines: list[str] = []
+    for i, r in enumerate(results, 1):
+        lines.append(f"{i}. {r.title}")
+        lines.append(r.url)
+        lines.append(r.snippet)
+    out, truncated = truncate("\n\n".join(lines))
+    return ToolResult(ok=True, output=out, truncated=truncated)
+
+
 _HANDLERS = {
     "read_file": _read_file,
     "write_file": _write_file,
@@ -579,6 +610,7 @@ _HANDLERS = {
     "glob": _glob,
     "grep": _grep,
     "web_fetch": _web_fetch,
+    "web_search": _web_search,
 }
 
 
