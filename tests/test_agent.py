@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from code_agent.agent import AgentSession
+from code_agent.agent import MAX_CONSECUTIVE_FAILURES, AgentSession
 from code_agent.llm import LLMError, LLMResponse, ToolCall
 
 
@@ -402,6 +402,32 @@ def test_agent_dispatch_missing_task(workdir):
     assert tool_msgs and "task is required" in tool_msgs[0]["content"]
 
 
+def test_agent_dispatch_non_dict_arguments(workdir):
+    dispatch = LLMResponse(
+        content="",
+        tool_calls=[ToolCall(id="c1", name="dispatch_subagent", arguments="oops")],
+    )
+    llm = FakeLLM([dispatch, LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5)
+    result = session.run_task("hi")
+    assert result.finished and result.final_text == "done"
+    tool_msgs = [m for m in session.conversation.messages if m["role"] == "tool"]
+    assert tool_msgs and "task is required" in tool_msgs[0]["content"]
+
+
+def test_agent_dispatch_blank_task(workdir):
+    dispatch = LLMResponse(
+        content="",
+        tool_calls=[ToolCall(id="c1", name="dispatch_subagent", arguments={"task": "   "})],
+    )
+    llm = FakeLLM([dispatch, LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=5)
+    result = session.run_task("hi")
+    assert result.finished and result.final_text == "done"
+    tool_msgs = [m for m in session.conversation.messages if m["role"] == "tool"]
+    assert tool_msgs and "task is required" in tool_msgs[0]["content"]
+
+
 def test_agent_dispatch_subagent_not_finished(workdir):
     bad = LLMResponse(
         content="",
@@ -411,7 +437,8 @@ def test_agent_dispatch_subagent_not_finished(workdir):
         content="",
         tool_calls=[ToolCall(id="c1", name="dispatch_subagent", arguments={"task": "sub task"})],
     )
-    llm = FakeLLM([dispatch, bad, bad, bad, LLMResponse(content="done", tool_calls=[])])
+    responses = [dispatch] + [bad] * MAX_CONSECUTIVE_FAILURES + [LLMResponse(content="done", tool_calls=[])]
+    llm = FakeLLM(responses)
     session = AgentSession(workdir=workdir, llm=llm, max_iterations=10)
     result = session.run_task("main task")
     assert result.finished and result.final_text == "done"

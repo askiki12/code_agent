@@ -127,6 +127,7 @@
   2. 即便模型尝试调用，`_run_tool` 运行时对 `allow_subagent=False` 会话的 `dispatch_subagent` 直接返回拒绝（`ToolResult(ok=False)`）；
   3. 子会话 system prompt 追加 subagent 指示（"You cannot delegate to sub-subagents"）。
 - 权限继承：`policy`/`interact` 透传给子会话，`--deny`/`--ask` 规则对子智能体同样生效，防止绕过权限。
+- 注意：派遣动作本身不经过 policy 检查（子会话内部工具调用仍继承 policy）；`dispatch_subagent` 不在 tools.py 的 TOOL_SCHEMAS 中，由 agent.py 动态注入。
 - 不持久化：子会话不携带 store/workspace，子任务对话不写入会话存储，回传仅最终报告，避免污染父上下文。
 - 注意：本工具的 JSON Schema 定义于 `agent.py`（`_DISPATCH_SUBAGENT_SCHEMA`），不属于 `tools.py` 的 `TOOL_SCHEMAS`。
 
