@@ -300,7 +300,7 @@ class CodeAgentApp(App):
         if self._busy():
             self.notify("agent 正在运行中，请稍候", severity="warning")
             return
-        if self.session.skills is None:
+        if self.session.skills is None or not self.session.skills.scan():
             self.notify("无可用技能", severity="warning")
             return
         self.push_screen(SkillScreen(self.session.skills), callback=self._on_skill_chosen)

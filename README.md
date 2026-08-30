@@ -66,14 +66,14 @@ uv run python -m code_agent --interactive
 | `Ctrl+S` | 技能选择弹窗（↑↓ 选择，Enter 使用，Esc 退出） |
 
 - 对话区可滚动：滚轮 / `PageUp` / `PageDown`；近底自动跟随流式输出，向上可回看历史。
-- `!cmd` 命令模式：输入以 `!` 开头即进入 shell 直执行（输入框边框变色、占位符变 `❯ shell: 输入命令`）；用户主动命令不走权限 policy；后台执行回显，120s 超时，运行中互斥。
+- `!cmd` 命令模式：输入以 `!` 开头即进入 shell 直执行（输入框边框变色、占位符变 `❯ shell: 输入命令（回车执行）`）；用户主动命令不走权限 policy；后台执行回显，120s 超时，运行中互斥。
 - 技能弹窗：`Ctrl+S` 打开可用技能列表，选中后派发"请加载技能 <name>"任务；`use_skill` 加载时对话区标注 `[skill] 加载 <name>… / ✓ / ✗`。
 - 状态栏显示工作区 / model / session / 运行状态；流式输出与工具行实时刷新；子智能体运行标注 `[subagent] 子智能体运行中… / ✓ 完成`；权限 ask 在输入栏就地确认（y/N）。
 
 ## 测试与验证
 
 ```bash
-uv run pytest tests/ -v      # 全量测试（当前 272 个，全部离线，无需 API key）
+uv run pytest tests/ -v      # 全量测试（当前 273 个，全部离线，无需 API key）
 ```
 
 ## 功能特性
@@ -103,7 +103,7 @@ code_agent/
 │   ├── skills.py          # 技能库（SkillRegistry）
 │   ├── web.py             # 网络检索：公网校验/文本提取/fetch/search
 │   └── tui/               # Textual 终端界面：app.py（CodeAgentApp）、widgets.py（控件）、worker.py（后台线程桥）、format_* 纯函数
-├── tests/                 # 272 个离线测试（pytest）
+├── tests/                 # 273 个离线测试（pytest）
 ├── docs/                  # 设计/架构/工具/上下文/开发文档 —— 接手者必读
 ├── pyproject.toml         # 依赖与元数据声明
 └── uv.lock                # 环境版本锁定

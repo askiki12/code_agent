@@ -106,6 +106,7 @@ class PromptInput(Input):
         self._ask_mode = False
 
     def set_ask_mode(self, prompt: str) -> None:
+        self.set_class(False, "command-mode")
         self._ask_mode = True
         self.value = ""
         self.placeholder = prompt

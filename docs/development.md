@@ -56,7 +56,7 @@ uv run python -m code_agent --interactive
 
 - `--prompt <task>`：一次性任务。
 - `-i` / `--interactive`：交互式模式（同一会话保持上下文）。TTY 下自动进入 **Textual 全屏 TUI**；`NO_TUI=1` 或非 TTY 回退纯文本 `input()` 循环。
-- TUI 行为：顶部状态栏（工作区 / model / session / 运行状态）、中部可滚动对话区（滚轮 / PageUp / PageDown，流式增量更新，近底自动跟随、向上可回看）、右侧会话列表面板（Ctrl+L 切换，选项点击恢复会话）、底部输入栏；快捷键 Ctrl+Q（退出）/ Ctrl+N（新建会话）/ Ctrl+L（会话列表）/ Ctrl+S（技能选择弹窗，↑↓ 选择 Enter 使用 Esc 退出）；运行中任务在后台线程执行（UI 始终响应）；`!cmd` 直接执行终端命令（输入以 `!` 开头输入框切换 command-mode 变 warning 色、占位符变 `❯ shell: 输入命令`，用户主动命令不走权限 policy，后台线程运行、120s 超时、busy 互斥，结果回显到对话区）；skill 加载标注 `[skill] 加载 <name>… / ✓ / ✗`；子智能体运行标注 `[subagent] 子智能体运行中… / ✓ 完成`；工具行与 `[agent] stopped`/`[session ...]` 行色彩分层；权限 ask 在输入栏就地确认（y/N）。
+- TUI 行为：顶部状态栏（工作区 / model / session / 运行状态）、中部可滚动对话区（滚轮 / PageUp / PageDown，流式增量更新，近底自动跟随、向上可回看）、右侧会话列表面板（Ctrl+L 切换，选项点击恢复会话）、底部输入栏；快捷键 Ctrl+Q（退出）/ Ctrl+N（新建会话）/ Ctrl+L（会话列表）/ Ctrl+S（技能选择弹窗，↑↓ 选择 Enter 使用 Esc 退出）；运行中任务在后台线程执行（UI 始终响应）；`!cmd` 直接执行终端命令（输入以 `!` 开头输入框切换 command-mode 变 warning 色、占位符变 `❯ shell: 输入命令（回车执行）`，用户主动命令不走权限 policy，后台线程运行、120s 超时、busy 互斥，结果回显到对话区）；skill 加载标注 `[skill] 加载 <name>… / ✓ / ✗`；子智能体运行标注 `[subagent] 子智能体运行中… / ✓ 完成`；工具行与 `[agent] stopped`/`[session ...]` 行色彩分层；权限 ask 在输入栏就地确认（y/N）。
 - `--workdir <dir>`：agent 工作目录（默认当前目录）。
 - `--model <model>` / `--base-url <url>` / `--api-key <key>`：覆盖环境变量 / `.env`。
 - `--max-iterations <n>`：最大循环轮次（默认 20）。
@@ -74,7 +74,7 @@ uv run python -m code_agent --interactive
 ## 3. 测试
 
 - 框架：`pytest`（经 `uv run`）。
-- 目录：`tests/`（当前 272 个用例，全部离线，无需 API key）。
+- 目录：`tests/`（当前 273 个用例，全部离线，无需 API key）。
   - `test_smoke.py`：包可导入、版本号。
   - `test_tools.py`：九个工具的本地执行用例（含 glob/grep）。
   - `test_llm_parse.py`：tool_calls 响应解析（含异常格式）。

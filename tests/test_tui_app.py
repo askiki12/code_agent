@@ -357,7 +357,8 @@ def test_app_choose_skill_dispatches(workdir, tmp_path):
             inp.value = "greet me"
             await pilot.press("ctrl+s")
             await asyncio.sleep(0.05)
-            # 直接调用回调验证派发路径（弹窗内 OptionSelected→dismiss→callback 闭环由 Esc 测试覆盖）
+            # 直接调用回调验证派发路径（弹窗内 OptionSelected→dismiss→callback
+            # 闭环由 no-bubble 回归测试覆盖；Esc 关闭路径由 test_app_skill_modal_esc_dismisses 覆盖）
             app._on_skill_chosen("greeting")
             for _ in range(80):
                 if session.conversation.messages and session.conversation.messages[-1]["role"] == "assistant":
@@ -417,6 +418,35 @@ def test_app_skill_selection_option_selected_no_bubble(workdir, tmp_path, monkey
             assert "session not found" not in text
             assert "请使用技能 greeting 完成：greet me" in text
             assert session.conversation.messages[-1]["role"] == "assistant"
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
+
+
+def test_app_skill_modal_esc_dismisses(workdir, tmp_path):
+    from code_agent.skills import SkillRegistry
+    import os as _os
+
+    d = _os.path.join(str(tmp_path / "proj"), ".code_agent", "skills", "greeting")
+    _os.makedirs(d, exist_ok=True)
+    with open(_os.path.join(d, "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write("---\nname: greeting\ndescription: say hi\n---\nhello\n")
+    reg = SkillRegistry(str(tmp_path / "proj"), str(tmp_path / "user"))
+    session = AgentSession(workdir=workdir, llm=_FakeLLM(), max_iterations=3)
+    session.skills = reg
+    store = SessionStore(str(tmp_path / "sessions"))
+    app = CodeAgentApp(session, store, None, model="test")
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            await pilot.press("ctrl+s")
+            await asyncio.sleep(0.05)
+            assert len(app.screen_stack) == 2  # 弹窗已打开
+            await pilot.press("escape")
+            await asyncio.sleep(0.05)
+            assert len(app.screen_stack) == 1  # 已关闭
+            log = app.query_one("#log")
+            assert log._lines == []  # 无任务派发
             await pilot.press("ctrl+q")
 
     asyncio.run(scenario())
