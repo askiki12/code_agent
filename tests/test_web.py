@@ -124,3 +124,116 @@ def test_extract_web_content_relative_links_resolved():
         "https://example.com/a/up.html",
         "https://example.com/root.html",
     ]
+
+
+import requests
+
+from code_agent.web import WebFetchError, fetch
+
+
+class FakeResponse:
+    def __init__(self, status_code=200, headers=None, body=b"", url="https://example.com/page", chunks=None):
+        self.status_code = status_code
+        self.headers = headers or {"Content-Type": "text/html; charset=utf-8"}
+        self.url = url
+        self._body = body
+        self._chunks = chunks
+        self.closed = False
+
+    def iter_content(self, chunk_size=8192):
+        if self._chunks is not None:
+            yield from self._chunks
+            return
+        for i in range(0, len(self._body), chunk_size):
+            yield self._body[i : i + chunk_size]
+
+    def close(self):
+        self.closed = True
+
+
+class FakeSession:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.requests = []
+
+    def get(self, url, headers=None, timeout=None, allow_redirects=None, stream=None):
+        self.requests.append(url)
+        resp = self.responses.pop(0)
+        if isinstance(resp, Exception):
+            raise resp
+        return resp
+
+
+def test_fetch_success(monkeypatch):
+    _fake_dns(monkeypatch, {"example.com": ["93.184.216.34"]})
+    html = "<html><head><title>Docs</title></head><body><p>Hello world</p><a href='/x'>x</a></body></html>"
+    resp = FakeResponse(body=html.encode(), url="https://example.com/page")
+    wc = fetch("https://example.com/page", session=FakeSession([resp]))
+    assert wc.title == "Docs"
+    assert "Hello world" in wc.text
+    assert wc.links == ["https://example.com/x"]
+
+
+def test_fetch_text_plain(monkeypatch):
+    _fake_dns(monkeypatch, {"example.com": ["93.184.216.34"]})
+    resp = FakeResponse(headers={"Content-Type": "text/plain; charset=utf-8"}, body="hello world".encode())
+    wc = fetch("https://example.com/f.txt", session=FakeSession([resp]))
+    assert wc.text == "hello world"
+    assert wc.title == "" and wc.links == []
+
+
+def test_fetch_http_error(monkeypatch):
+    _fake_dns(monkeypatch, {"example.com": ["93.184.216.34"]})
+    resp = FakeResponse(status_code=404, body=b"not found", url="https://example.com/nope")
+    with pytest.raises(WebFetchError, match="404"):
+        fetch("https://example.com/nope", session=FakeSession([resp]))
+
+
+def test_fetch_timeout(monkeypatch):
+    _fake_dns(monkeypatch, {"example.com": ["93.184.216.34"]})
+    with pytest.raises(WebFetchError, match="request failed"):
+        fetch("https://example.com/", session=FakeSession([requests.Timeout("boom")]))
+
+
+def test_fetch_rejects_private_target():
+    with pytest.raises(WebFetchError, match="non-public"):
+        fetch("http://10.0.0.1/", session=FakeSession([]))
+
+
+def test_fetch_unsupported_content_type(monkeypatch):
+    _fake_dns(monkeypatch, {"example.com": ["93.184.216.34"]})
+    resp = FakeResponse(headers={"Content-Type": "application/pdf"}, body=b"%PDF")
+    with pytest.raises(WebFetchError, match="unsupported content type"):
+        fetch("https://example.com/a.pdf", session=FakeSession([resp]))
+
+
+def test_fetch_content_length_too_large(monkeypatch):
+    _fake_dns(monkeypatch, {"example.com": ["93.184.216.34"]})
+    resp = FakeResponse(headers={"Content-Type": "text/html", "Content-Length": "3000000"}, body=b"x")
+    with pytest.raises(WebFetchError, match="too large"):
+        fetch("https://example.com/big", session=FakeSession([resp]))
+
+
+def test_fetch_stream_truncates_over_limit(monkeypatch):
+    _fake_dns(monkeypatch, {"example.com": ["93.184.216.34"]})
+    resp = FakeResponse(headers={"Content-Type": "text/plain"}, chunks=[b"x" * 60, b"y" * 60])
+    wc = fetch("https://example.com/big", max_bytes=100, session=FakeSession([resp]))
+    assert wc.text == "x" * 60 + "y" * 40
+
+
+def test_fetch_redirect_revalidates_public(monkeypatch):
+    _fake_dns(monkeypatch, {"example.com": ["93.184.216.34"]})
+    r1 = FakeResponse(status_code=302, headers={"Location": "https://example.com/real"}, body=b"")
+    r2 = FakeResponse(body="<html><title>Real</title><body>ok</body></html>".encode(), url="https://example.com/real")
+    sess = FakeSession([r1, r2])
+    wc = fetch("https://example.com/start", session=sess)
+    assert sess.requests == ["https://example.com/start", "https://example.com/real"]
+    assert wc.title == "Real"
+
+
+def test_fetch_redirect_to_private_blocked(monkeypatch):
+    _fake_dns(monkeypatch, {"example.com": ["93.184.216.34"]})
+    r1 = FakeResponse(status_code=302, headers={"Location": "http://10.0.0.1/evil"}, body=b"")
+    sess = FakeSession([r1])
+    with pytest.raises(WebFetchError, match="non-public"):
+        fetch("https://example.com/start", session=sess)

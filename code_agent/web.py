@@ -118,3 +118,98 @@ def extract_web_content(html: str, base_url: str) -> WebContent:
     lines = [" ".join(line.split()) for line in "".join(parser._text_parts).splitlines()]
     lines = [line for line in lines if line]
     return WebContent(title=title, text="\n".join(lines), links=parser.links)
+
+
+import re
+
+
+def _guess_charset(content_type: str, body: bytes) -> str:
+    m = re.search(r"charset=([\w-]+)", content_type, re.I)
+    if m:
+        return m.group(1)
+    head = body[:1024].decode("latin-1", errors="replace")
+    m = re.search(r"<meta[^>]+charset=[\"']?([\w-]+)", head, re.I)
+    if m:
+        return m.group(1)
+    return "utf-8"
+
+
+def _read_limited(resp, max_bytes: int) -> bytes:
+    content_length = resp.headers.get("Content-Length")
+    if content_length is not None:
+        try:
+            if int(content_length) > max_bytes:
+                resp.close()
+                raise WebFetchError(f"response too large: {content_length} bytes")
+        except ValueError:
+            pass
+    chunks: list[bytes] = []
+    total = 0
+    for chunk in resp.iter_content(chunk_size=8192):
+        if total >= max_bytes:
+            break
+        room = max_bytes - total
+        part = chunk[:room]
+        chunks.append(part)
+        total += len(part)
+    return b"".join(chunks)
+
+
+def _request_with_validation(session, url: str, timeout: float):
+    for _ in range(10):
+        if not is_public_http_url(url):
+            raise WebFetchError("refusing non-public or unsupported URL")
+        resp = session.get(
+            url,
+            headers={"User-Agent": USER_AGENT},
+            timeout=timeout,
+            allow_redirects=False,
+            stream=True,
+        )
+        if resp.status_code in (301, 302, 303, 307, 308):
+            location = resp.headers.get("Location")
+            resp.close()
+            if not location:
+                raise WebFetchError("redirect without Location header")
+            url = urljoin(url, location)
+            continue
+        return resp
+    raise WebFetchError("too many redirects")
+
+
+def fetch(
+    url: str,
+    *,
+    timeout: float = DEFAULT_TIMEOUT,
+    max_bytes: int = MAX_BYTES,
+    session=None,
+) -> WebContent:
+    """Fetch a public http(s) page and extract title/text/links. Raises WebFetchError."""
+    close_session = session is None
+    if session is None:
+        session = requests.Session()
+    try:
+        try:
+            resp = _request_with_validation(session, url, timeout)
+            if resp.status_code != 200:
+                preview = _read_limited(resp, 4096).decode("utf-8", errors="replace")[:200]
+                raise WebFetchError(f"HTTP {resp.status_code}: {preview}")
+            content_type = resp.headers.get("Content-Type", "").lower().split(";")[0].strip()
+            if content_type not in ("text/html", "text/plain") and content_type:
+                raise WebFetchError(f"unsupported content type: {content_type}")
+            body = _read_limited(resp, max_bytes)
+            if content_type == "text/plain":
+                charset = _guess_charset(resp.headers.get("Content-Type", ""), body)
+                return WebContent(title="", text=body.decode(charset, errors="replace"), links=[])
+            charset = _guess_charset(resp.headers.get("Content-Type", ""), body)
+            html = body.decode(charset, errors="replace")
+            return extract_web_content(html, resp.url)
+        except WebFetchError:
+            raise
+        except requests.RequestException as e:
+            raise WebFetchError(f"request failed: {e}") from e
+        except OSError as e:
+            raise WebFetchError(f"network error: {e}") from e
+    finally:
+        if close_session:
+            session.close()
