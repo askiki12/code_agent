@@ -25,6 +25,7 @@ Available tools:
 - glob: find files by glob pattern (e.g. **/*.py)
 - grep: search file contents with a regex
 - web_fetch: fetch a public web page's title/text/links (refuses internal/private addresses)
+- web_search: search the web (DuckDuckGo Lite) returning titles/URLs/snippets
 
 Rules:
 1. Plan each step. Prefer small, verifiable changes.
@@ -32,7 +33,7 @@ Rules:
 3. When a tool fails, read the error, adjust, and retry. Do not repeat the exact same failing call.
 4. Do NOT read or write protected paths such as .env, .env.* or .git.
 5. When the task is complete, reply with a short final summary and stop making tool calls.
-6. When external facts (versions, API conventions, docs) are uncertain, prefer verifying with web_fetch over guessing from memory.
+6. When external facts are uncertain, use web_search to discover candidate URLs, then use web_fetch to read the full page — never guess from memory.
 """
 
 MAX_ITERATIONS_DEFAULT = 20
