@@ -107,63 +107,81 @@ def test_skill_list_refresh(tmp_path):
 
 
 from code_agent.llm import Usage
-from code_agent.tui.widgets import _fmt_k, _usage_segments, StatusBar
+from code_agent.tui.widgets import StatusBar, StatusFooter, _fmt_ctx, _footer_stats
 
 
-def test_fmt_k():
-    assert _fmt_k(999) == "999"
-    assert _fmt_k(1000) == "1k"
-    assert _fmt_k(90000) == "90k"
-    assert _fmt_k(12340) == "12.3k"
-    assert _fmt_k(1_000_000) == "1M"
-    assert _fmt_k(1_500_000) == "1.5M"
+def test_fmt_ctx():
+    assert _fmt_ctx(0) == "0.0k"
+    assert _fmt_ctx(90000) == "90.0k"
+    assert _fmt_ctx(213000) == "213.0k"
+    assert _fmt_ctx(12340) == "12.3k"
 
 
-def test_usage_segments_full():
-    ctx, cache = _usage_segments(Usage(prompt_tokens=12340, cached_tokens=5000), 90000)
-    assert ctx == "ctx 12.3k/90k 13%"
-    assert cache == "cache 40%"
+def test_footer_stats_full():
+    assert _footer_stats(Usage(prompt_tokens=213000, cached_tokens=90000), 1_000_000) == "213.0k(21%) cache:42%"
 
 
-def test_usage_segments_heuristic_prefix_and_no_cache():
-    ctx, cache = _usage_segments(Usage(prompt_tokens=1000, heuristic=True), 90000)
-    assert ctx == "ctx ~1k/90k 1%"
-    assert cache == ""
+def test_footer_stats_no_cache():
+    assert _footer_stats(Usage(prompt_tokens=213000), 1_000_000) == "213.0k(21%)"
 
 
-def test_usage_segments_none():
-    assert _usage_segments(None, 90000) == ("", "")
+def test_footer_stats_none():
+    assert _footer_stats(None, 1_000_000) == ""
 
 
-def test_usage_segments_zero_cache_omitted():
-    ctx, cache = _usage_segments(Usage(prompt_tokens=5000, cached_tokens=0), 90000)
-    assert "cache" not in cache
-    assert ctx == "ctx 5k/90k 5%"
+def test_footer_stats_heuristic():
+    assert _footer_stats(Usage(prompt_tokens=12340, heuristic=True), 1_000_000) == "~12.3k(1%)"
 
 
-def test_usage_segments_compact_drops_pct_and_cache():
-    ctx, cache = _usage_segments(Usage(prompt_tokens=12340, cached_tokens=5000), 90000, compact=True)
-    assert ctx == "ctx 12.3k/90k"
-    assert cache == ""
-
-
-def test_status_bar_renders_usage(monkeypatch):
-    monkeypatch.setattr("code_agent.tui.widgets._status_width", lambda: 200)
+def test_status_bar_workspace_path_and_session_title():
     sb = StatusBar()
-    sb.update_status("idle", model="m", session_id="s1",
-                     workspace_line="Workspace: w", usage=Usage(prompt_tokens=12000, cached_tokens=3000),
-                     context_window=90000)
+    sb.update_status("idle", model="m", session_title="我的会话", workspace_line="Workspace: /home/kiki/proj")
     plain = sb.render().plain
-    assert "ctx 12k/90k 13%" in plain
-    assert "cache 25%" in plain
+    assert "Workspace: /home/kiki/proj" in plain
+    assert "session: 我的会话" in plain
 
 
-def test_status_bar_trims_pct_when_narrow(monkeypatch):
-    monkeypatch.setattr("code_agent.tui.widgets._status_width", lambda: 30)
+def test_status_bar_new_session_title():
     sb = StatusBar()
-    sb.update_status("idle", model="m", session_id="s1",
-                     workspace_line="Workspace: w", usage=Usage(prompt_tokens=12000),
-                     context_window=90000)
+    sb.update_status("idle", session_title="")
+    assert "session: new" in sb.render().plain
+
+
+def test_status_bar_no_ctx_segment():
+    sb = StatusBar()
+    sb.update_status("idle", model="m", session_title="s")
     plain = sb.render().plain
-    assert "12k/90k" in plain
-    assert "%" not in plain
+    assert "ctx" not in plain and "cache" not in plain and "%" not in plain
+
+
+class _FooterApp(App):
+    def compose(self):
+        yield StatusFooter(id="footer")
+
+
+def _run_footer(scenario) -> None:
+    async def run():
+        app = _FooterApp()
+        async with app.run_test():
+            footer = app.query_one("#footer", StatusFooter)
+            await scenario(footer)
+
+    asyncio.run(run())
+
+
+def test_status_footer_update_stats():
+    async def scenario(footer):
+        footer.update_stats("213.0k(21%) cache:40%")
+        await asyncio.sleep(0.01)
+        assert footer.query_one("#footer-stats").render().plain == "213.0k(21%) cache:40%"
+
+    _run_footer(scenario)
+
+
+def test_status_footer_empty_stats():
+    async def scenario(footer):
+        footer.update_stats("")
+        await asyncio.sleep(0.01)
+        assert footer.query_one("#footer-stats").render().plain == ""
+
+    _run_footer(scenario)

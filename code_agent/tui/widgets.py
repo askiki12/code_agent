@@ -1,53 +1,29 @@
 """Custom widgets for the code_agent TUI."""
 from __future__ import annotations
 
-import shutil
-
 from code_agent.tui import _line_style
 from textual.containers import VerticalScroll
 from textual.widget import Widget
-from textual.widgets import Input, OptionList, Static
+from textual.widgets import Footer, Input, OptionList, Static
 from textual.widgets.option_list import Option
 from rich.text import Text
 
 
-def _fmt_k(n: int) -> str:
-    if n < 1000:
-        return str(n)
-    if n >= 1_000_000:
-        s = f"{n / 1_000_000:.1f}"
-        if s.endswith(".0"):
-            s = s[:-2]
-        return s + "M"
-    s = f"{n / 1000:.1f}"
-    if s.endswith(".0"):
-        s = s[:-2]
-    return s + "k"
+def _fmt_ctx(n: int) -> str:
+    return f"{n / 1000:.1f}k"
 
 
-def _usage_segments(usage, context_window, *, compact: bool = False) -> tuple[str, str]:
+def _footer_stats(usage, context_window) -> str:
     if usage is None:
-        return "", ""
+        return ""
     prompt = usage.prompt_tokens
     denom = context_window or prompt
-    prefix = "~" if usage.heuristic else ""
-    if compact:
-        return f"ctx {prefix}{_fmt_k(prompt)}/{_fmt_k(denom)}", ""
     pct = int(prompt / denom * 100) if denom else 0
-    warn = "!" if prompt > denom else ""
-    ctx = f"ctx {prefix}{_fmt_k(prompt)}/{_fmt_k(denom)} {pct}%{warn}"
-    cache = ""
-    if not usage.heuristic and prompt:
-        if usage.cached_tokens:
-            cache = f"cache {int(usage.cached_tokens / prompt * 100)}%"
-    return ctx, cache
-
-
-def _status_width() -> int:
-    try:
-        return shutil.get_terminal_size().columns
-    except Exception:
-        return 80
+    prefix = "~" if usage.heuristic else ""
+    parts = [f"{prefix}{_fmt_ctx(prompt)}({pct}%)"]
+    if not usage.heuristic and prompt and usage.cached_tokens:
+        parts.append(f"cache:{int(usage.cached_tokens / prompt * 100)}%")
+    return " ".join(parts)
 
 
 class StatusBar(Widget):
@@ -55,28 +31,16 @@ class StatusBar(Widget):
         super().__init__(*args, **kwargs)
         self._text = Text("idle", style="green")
 
-    def update_status(self, state: str, model: str = "", session_id: str = "",
-                      workspace_line: str = "", usage=None, context_window: int = 0) -> None:
+    def update_status(self, state: str, model: str = "", session_title: str = "",
+                      workspace_line: str = "") -> None:
         color = "green" if state == "idle" else "yellow"
-        ctx, cache = _usage_segments(usage, context_window)
         parts = []
         if workspace_line:
             parts.append(workspace_line)
         if model:
             parts.append(f"model: {model}")
-        if session_id:
-            parts.append(f"session: {session_id}")
-        if ctx:
-            parts.append(ctx)
-        if cache:
-            parts.append(cache)
+        parts.append(f"session: {session_title or 'new'}")
         head = " | ".join(parts)
-        if len(head) > _status_width():
-            ctx_c, _ = _usage_segments(usage, context_window, compact=True)
-            parts = [p for p in parts if not (p.startswith("ctx ") or p.startswith("cache "))]
-            if ctx_c:
-                parts.append(ctx_c)
-            head = " | ".join(parts)
         dot = "●"
         self._text = Text()
         self._text.append(head + ("  " if head else "") + dot + " ", style="default")
@@ -85,6 +49,21 @@ class StatusBar(Widget):
 
     def render(self) -> Text:
         return self._text
+
+
+class StatusFooter(Footer):
+    DEFAULT_CSS = "#footer-stats { dock: right; margin-right: 1; }"
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._stats = Static("", id="footer-stats")
+
+    def compose(self):
+        yield self._stats
+        yield from super().compose()
+
+    def update_stats(self, text: str) -> None:
+        self._stats.update(text)
 
 
 class ConversationLog(VerticalScroll):
