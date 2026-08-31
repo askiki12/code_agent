@@ -574,10 +574,10 @@ def test_app_on_stats_updates_footer(workdir, tmp_path):
             footer = None
             for _ in range(80):
                 footer = app.query_one("#footer", StatusFooter)
-                if "12.0k" in footer.query_one("#footer-stats").render().plain:
+                if "12.0k" in footer.render().plain:
                     break
                 await asyncio.sleep(0.02)
-            txt = footer.query_one("#footer-stats").render().plain
+            txt = footer.render().plain
             assert "12.0k(13%)" in txt
             assert "cache:25%" in txt
             await pilot.press("ctrl+q")
@@ -601,9 +601,10 @@ def test_app_switch_session_updates_footer(workdir, tmp_path):
             )
             await asyncio.sleep(0.02)
             footer = app.query_one("#footer", StatusFooter)
-            txt = footer.query_one("#footer-stats").render().plain
-            assert txt.startswith("~")
+            txt = footer.render().plain
+            assert "~" in txt
             assert "(" in txt and ")" in txt
+            assert txt.rstrip().endswith(")")  # stats 右对齐在末尾
             await pilot.press("ctrl+q")
 
     asyncio.run(scenario())
@@ -619,7 +620,28 @@ def test_app_new_session_clears_footer_stats(workdir, tmp_path):
         async with app.run_test() as pilot:
             await pilot.press("ctrl+n")
             footer = app.query_one("#footer", StatusFooter)
-            assert footer.query_one("#footer-stats").render().plain == ""
+            assert "(" not in footer.render().plain  # stats 已清空，但快捷键仍在
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
+
+
+def test_app_footer_shows_bindings(workdir, tmp_path):
+    from code_agent.tui.widgets import StatusFooter
+    session = AgentSession(workdir=workdir, llm=_FakeLLM(), max_iterations=3)
+    store = SessionStore(str(tmp_path / "sessions"))
+    app = CodeAgentApp(session, store, None, model="test")
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            footer = app.query_one("#footer", StatusFooter)
+            plain = footer.render().plain
+            assert "Quit" in plain
+            assert "New" in plain
+            assert "Sessions" in plain
+            assert "Skills" in plain
+            assert "Rename" in plain
+            assert "ctrl+p" not in plain  # show=False 的绑定不显示
             await pilot.press("ctrl+q")
 
     asyncio.run(scenario())

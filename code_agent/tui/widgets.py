@@ -4,7 +4,7 @@ from __future__ import annotations
 from code_agent.tui import _line_style
 from textual.containers import VerticalScroll
 from textual.widget import Widget
-from textual.widgets import Footer, Input, OptionList, Static
+from textual.widgets import Input, OptionList, Static
 from textual.widgets.option_list import Option
 from rich.text import Text
 
@@ -51,19 +51,46 @@ class StatusBar(Widget):
         return self._text
 
 
-class StatusFooter(Footer):
-    DEFAULT_CSS = "#footer-stats { dock: right; margin-right: 1; }"
+class StatusFooter(Widget):
+    DEFAULT_CSS = """
+    StatusFooter {
+        dock: bottom;
+        height: 1;
+        background: $footer-background;
+        color: $footer-foreground;
+    }
+    """
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._stats = Static("", id="footer-stats")
-
-    def compose(self):
-        yield self._stats
-        yield from super().compose()
+        self._stats_text = ""
 
     def update_stats(self, text: str) -> None:
-        self._stats.update(text)
+        self._stats_text = text
+        self.refresh()
+
+    def render(self) -> Text:
+        left = self._binding_text()
+        text = Text(left)
+        stats = self._stats_text
+        if stats:
+            pad = max(1, self.size.width - len(left) - len(stats) - 1)
+            text.append(" " * pad)
+            text.append(stats, style="bold cyan")
+        return text
+
+    def _binding_text(self) -> str:
+        parts: list[str] = []
+        try:
+            for value in self.screen.active_bindings.values():
+                binding = value[1]
+                if not binding.show:
+                    continue
+                key = self.app.get_key_display(binding)
+                parts.append(f"{key} {binding.description}")
+        except Exception:
+            return ""
+        return " ".join(parts)
 
 
 class ConversationLog(VerticalScroll):

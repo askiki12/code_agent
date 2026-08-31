@@ -155,6 +155,8 @@ def test_status_bar_no_ctx_segment():
 
 
 class _FooterApp(App):
+    BINDINGS = [("ctrl+q", "quit", "Quit"), ("ctrl+n", "new_session", "New"),
+                ("ctrl+s", "choose_skill", "Skills")]
     def compose(self):
         yield StatusFooter(id="footer")
 
@@ -169,11 +171,21 @@ def _run_footer(scenario) -> None:
     asyncio.run(run())
 
 
+def test_status_footer_shows_bindings():
+    async def scenario(footer):
+        plain = footer.render().plain
+        assert "Quit" in plain
+        assert "New" in plain
+        assert "Skills" in plain
+
+    _run_footer(scenario)
+
+
 def test_status_footer_update_stats():
     async def scenario(footer):
         footer.update_stats("213.0k(21%) cache:40%")
         await asyncio.sleep(0.01)
-        assert footer.query_one("#footer-stats").render().plain == "213.0k(21%) cache:40%"
+        assert footer.render().plain.endswith("213.0k(21%) cache:40%")
 
     _run_footer(scenario)
 
@@ -182,6 +194,8 @@ def test_status_footer_empty_stats():
     async def scenario(footer):
         footer.update_stats("")
         await asyncio.sleep(0.01)
-        assert footer.query_one("#footer-stats").render().plain == ""
+        plain = footer.render().plain
+        assert "Quit" in plain  # 快捷键仍在
+        assert "cache" not in plain
 
     _run_footer(scenario)
