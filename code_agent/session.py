@@ -79,8 +79,15 @@ class SessionStore:
         created_at = existing["created_at"] if existing else now
         if existing is None:
             os.makedirs(self.root, exist_ok=True)
-        resolved_title = title if title is not None else (existing.get("title") or "") if existing else ""
+        if existing is not None and existing.get("title_pinned"):
+            resolved_title = existing.get("title") or ""
+        elif title is not None:
+            resolved_title = title
+        else:
+            resolved_title = (existing.get("title") or "") if existing else ""
         meta = _meta_dict(session_id, resolved_title, created_at, now, len(messages))
+        if existing is not None and existing.get("title_pinned"):
+            meta["title_pinned"] = True
         self._write(path, [meta] + list(messages))
 
     def load(self, session_id: str) -> tuple[dict, list[dict]]:
@@ -114,3 +121,28 @@ class SessionStore:
             for obj in objects:
                 f.write(json.dumps(obj, ensure_ascii=False) + "\n")
         os.replace(tmp, path)
+
+    def _write_lines(self, path: str, lines: list[str]) -> None:
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        os.replace(tmp, path)
+
+    def rename(self, session_id: str, title: str) -> None:
+        path = self._path(self.root, session_id)
+        if not os.path.isfile(path):
+            raise KeyError(session_id)
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.read().split("\n")
+        meta_line = lines[0] if lines else ""
+        try:
+            meta = json.loads(meta_line)
+        except json.JSONDecodeError:
+            raise KeyError(session_id) from None
+        if not isinstance(meta, dict) or meta.get("type") != "meta":
+            raise KeyError(session_id)
+        meta["title"] = title
+        meta["title_pinned"] = True
+        meta["updated_at"] = datetime.now().isoformat(timespec="microseconds")
+        lines[0] = json.dumps(meta, ensure_ascii=False)
+        self._write_lines(path, lines)

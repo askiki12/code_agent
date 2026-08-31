@@ -102,3 +102,43 @@ def test_save_conversation_with_surrogates(tmp_path):
     store.save(sid, conv.messages, title="t")  # must not raise
     _, msgs = store.load(sid)
     assert "surrogate" not in str(msgs)
+
+
+def test_rename_pins_title(tmp_path):
+    store = SessionStore(str(tmp_path))
+    sid = store.create("auto")
+    store.save(sid, [{"role": "user", "content": "u"}], title="auto2")
+    store.rename(sid, "manual title")
+    store.save(sid, [{"role": "user", "content": "u"}, {"role": "assistant", "content": "a"}], title="ignored")
+    meta, msgs = store.load(sid)
+    assert meta["title"] == "manual title"
+    assert meta.get("title_pinned") is True
+    assert len(msgs) == 2
+
+
+def test_rename_keeps_created_at_and_messages(tmp_path):
+    store = SessionStore(str(tmp_path))
+    sid = store.create("t")
+    store.save(sid, [{"role": "user", "content": "u"}, {"role": "tool", "tool_call_id": "x", "name": "n", "content": "c"}])
+    before, _ = store.load(sid)
+    store.rename(sid, "renamed")
+    meta, msgs = store.load(sid)
+    assert meta["created_at"] == before["created_at"]
+    assert meta["updated_at"] >= before["updated_at"]
+    assert len(msgs) == 2
+    assert msgs[0]["content"] == "u"
+
+
+def test_rename_missing_raises_keyerror(tmp_path):
+    store = SessionStore(str(tmp_path))
+    with pytest.raises(KeyError):
+        store.rename("code_agent-nope", "x")
+
+
+def test_save_unpinned_updates_title(tmp_path):
+    store = SessionStore(str(tmp_path))
+    sid = store.create("t1")
+    store.save(sid, [{"role": "user", "content": "a"}], title="t2")
+    store.save(sid, [{"role": "user", "content": "b"}], title="t3")
+    meta, _ = store.load(sid)
+    assert meta["title"] == "t3"
