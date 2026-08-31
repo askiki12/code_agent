@@ -553,9 +553,9 @@ def test_app_rename_disarmed_on_session_select(workdir, tmp_path):
     asyncio.run(scenario())
 
 
-def test_app_on_stats_updates_status(workdir, tmp_path):
+def test_app_on_stats_updates_footer(workdir, tmp_path):
     from code_agent.llm import Usage
-    from code_agent.tui.widgets import StatusBar
+    from code_agent.tui.widgets import StatusFooter
 
     class _LLM:
         def chat(self, messages, tools=None, on_delta=None):
@@ -571,14 +571,73 @@ def test_app_on_stats_updates_status(workdir, tmp_path):
             inp = app.query_one("#input")
             inp.value = "hi"
             await pilot.press("enter")
+            footer = None
             for _ in range(80):
-                sb = app.query_one("#status", StatusBar)
-                if "ctx" in sb.render().plain:
+                footer = app.query_one("#footer", StatusFooter)
+                if "12.0k" in footer.query_one("#footer-stats").render().plain:
                     break
                 await asyncio.sleep(0.02)
+            txt = footer.query_one("#footer-stats").render().plain
+            assert "12.0k(13%)" in txt
+            assert "cache:25%" in txt
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
+
+
+def test_app_switch_session_updates_footer(workdir, tmp_path):
+    from types import SimpleNamespace
+    from code_agent.tui.widgets import StatusFooter
+    store = SessionStore(str(tmp_path / "sessions"))
+    sid = store.create("t")
+    store.save(sid, [{"role": "user", "content": "hello world hello world"}])
+    session = AgentSession(workdir=workdir, llm=_FakeLLM(), max_iterations=3, store=store)
+    app = CodeAgentApp(session, store, None, model="test")
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            app.on_option_list_option_selected(
+                SimpleNamespace(option=SimpleNamespace(id=sid))
+            )
+            await asyncio.sleep(0.02)
+            footer = app.query_one("#footer", StatusFooter)
+            txt = footer.query_one("#footer-stats").render().plain
+            assert txt.startswith("~")
+            assert "(" in txt and ")" in txt
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
+
+
+def test_app_new_session_clears_footer_stats(workdir, tmp_path):
+    from code_agent.tui.widgets import StatusFooter
+    session = AgentSession(workdir=workdir, llm=_FakeLLM(), max_iterations=3)
+    store = SessionStore(str(tmp_path / "sessions"))
+    app = CodeAgentApp(session, store, None, model="test")
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            await pilot.press("ctrl+n")
+            footer = app.query_one("#footer", StatusFooter)
+            assert footer.query_one("#footer-stats").render().plain == ""
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
+
+
+def test_app_top_bar_shows_session_title_and_path(workdir, tmp_path):
+    from code_agent.workspace import Workspace
+    from code_agent.tui.widgets import StatusBar
+    store = SessionStore(str(tmp_path / "sessions"))
+    session = AgentSession(workdir=workdir, llm=_FakeLLM(), max_iterations=3, store=store)
+    workspace = Workspace(workdir)
+    app = CodeAgentApp(session, store, workspace, model="test")
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            sb = app.query_one("#status", StatusBar)
             plain = sb.render().plain
-            assert "ctx 12k/90k 13%" in plain
-            assert "cache 25%" in plain
+            assert "Workspace: " in plain
             await pilot.press("ctrl+q")
 
     asyncio.run(scenario())

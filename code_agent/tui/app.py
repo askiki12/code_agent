@@ -8,11 +8,19 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Static
+from textual.widgets import Header, Static
 
 from code_agent.cli import handle_command
 from code_agent.tui import format_assistant, format_tool, format_user
-from code_agent.tui.widgets import ConversationLog, PromptInput, SessionList, SkillList, StatusBar
+from code_agent.tui.widgets import (
+    ConversationLog,
+    PromptInput,
+    SessionList,
+    SkillList,
+    StatusBar,
+    StatusFooter,
+    _footer_stats,
+)
 from code_agent.tui.worker import AgentWorker
 
 
@@ -88,10 +96,12 @@ class CodeAgentApp(App):
             yield ConversationLog(id="log")
             yield SessionList(id="sessions")
         yield PromptInput(placeholder="❯ 输入任务（/ 开头为命令）", id="input")
-        yield Footer()
+        yield StatusFooter(id="footer")
 
     def _workspace_line(self) -> str:
-        return self.workspace.display() if self.workspace is not None else ""
+        if self.workspace is None:
+            return ""
+        return f"Workspace: {self.workspace.path}"
 
     def _busy(self) -> bool:
         return (self._worker is not None and self._worker.is_alive()) or self._bang_busy
@@ -103,10 +113,14 @@ class CodeAgentApp(App):
     def _refresh_status(self, state: str) -> None:
         self.query_one("#status", StatusBar).update_status(
             state, model=self.model,
-            session_id=self.session.session_id or "new",
+            session_title=self.session.current_title(),
             workspace_line=self._workspace_line(),
-            usage=getattr(self.session, "last_usage", None),
-            context_window=getattr(self.session, "context_window", 0),
+        )
+        self.query_one("#footer", StatusFooter).update_stats(
+            _footer_stats(
+                getattr(self.session, "last_usage", None),
+                getattr(self.session, "context_window", 0),
+            )
         )
 
     def on_mount(self) -> None:
