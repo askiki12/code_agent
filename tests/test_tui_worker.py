@@ -89,3 +89,30 @@ def test_worker_bridges_new_callbacks(workdir):
         time.sleep(0.02)
     assert len(starts) == 2
     assert tool_starts == [("read_file", {"path": "a.txt"})]
+
+
+def test_worker_bridges_on_stats(workdir):
+    from code_agent.llm import Usage
+    from code_agent.tui.worker import AgentWorker
+
+    class _LLM:
+        def chat(self, messages, tools=None, on_delta=None):
+            return LLMResponse(content="done", tool_calls=[],
+                               usage=Usage(prompt_tokens=10, completion_tokens=2))
+
+    session = _make_session(workdir, _LLM())
+    app = _FakeApp()
+    stats = []
+
+    w = AgentWorker(
+        app, session,
+        on_delta=lambda c: None,
+        on_tool=lambda n, r: None,
+        on_done=lambda r: None,
+        on_stats=lambda u: stats.append(u),
+    )
+    w.start("hi")
+    deadline = time.time() + 5
+    while not stats and time.time() < deadline:
+        time.sleep(0.02)
+    assert stats and stats[0].prompt_tokens == 10

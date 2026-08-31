@@ -450,3 +450,77 @@ def test_app_skill_modal_esc_dismisses(workdir, tmp_path):
             await pilot.press("ctrl+q")
 
     asyncio.run(scenario())
+
+
+def test_app_rename_session(workdir, tmp_path):
+    from code_agent.session import SessionStore
+    store = SessionStore(str(tmp_path / "sessions"))
+    session = AgentSession(workdir=workdir, llm=_FakeLLM(), max_iterations=3, store=store)
+    app = CodeAgentApp(session, store, None, model="test")
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            inp = app.query_one("#input")
+            await pilot.press("ctrl+r")
+            assert inp._rename_mode is True
+            inp.value = "我的会话"
+            await pilot.press("enter")
+            assert session.session_id is not None
+            meta, _ = store.load(session.session_id)
+            assert meta["title"] == "我的会话"
+            assert meta.get("title_pinned") is True
+            assert inp._rename_mode is False
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
+
+
+def test_app_rename_esc_cancels(workdir, tmp_path):
+    from code_agent.session import SessionStore
+    store = SessionStore(str(tmp_path / "sessions"))
+    session = AgentSession(workdir=workdir, llm=_FakeLLM(), max_iterations=3, store=store)
+    app = CodeAgentApp(session, store, None, model="test")
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            inp = app.query_one("#input")
+            await pilot.press("ctrl+r")
+            assert inp._rename_mode is True
+            await pilot.press("escape")
+            assert inp._rename_mode is False
+            assert session.session_id is None
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
+
+
+def test_app_on_stats_updates_status(workdir, tmp_path):
+    from code_agent.llm import Usage
+    from code_agent.tui.widgets import StatusBar
+    from code_agent.tui.worker import AgentWorker
+
+    class _LLM:
+        def chat(self, messages, tools=None, on_delta=None):
+            return LLMResponse(content="done", tool_calls=[],
+                               usage=Usage(prompt_tokens=12000, cached_tokens=3000))
+
+    session = AgentSession(workdir=workdir, llm=_LLM(), max_iterations=3, context_window=90000)
+    store = SessionStore(str(tmp_path / "sessions"))
+    app = CodeAgentApp(session, store, None, model="test")
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            inp = app.query_one("#input")
+            inp.value = "hi"
+            await pilot.press("enter")
+            for _ in range(80):
+                sb = app.query_one("#status", StatusBar)
+                if "ctx" in sb.render().plain:
+                    break
+                await asyncio.sleep(0.02)
+            plain = sb.render().plain
+            assert "ctx 12k/90k 13%" in plain
+            assert "cache 25%" in plain
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())

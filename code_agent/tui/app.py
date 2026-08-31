@@ -62,6 +62,8 @@ class CodeAgentApp(App):
         Binding("ctrl+l", "toggle_sessions", "Sessions"),
         Binding("ctrl+p", "noop", "disabled", show=False),
         Binding("ctrl+s", "choose_skill", "Skills"),
+        Binding("ctrl+r", "rename_session", "Rename"),
+        Binding("escape", "cancel_rename", "Cancel", show=False),
     ]
 
     def __init__(self, session, store, workspace=None, *, model: str = "") -> None:
@@ -77,6 +79,7 @@ class CodeAgentApp(App):
         self._subagent_idx: int | None = None
         self._skill_idx: int | None = None
         self._skill_name: str = ""
+        self._rename_active = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -102,6 +105,8 @@ class CodeAgentApp(App):
             state, model=self.model,
             session_id=self.session.session_id or "new",
             workspace_line=self._workspace_line(),
+            usage=getattr(self.session, "last_usage", None),
+            context_window=getattr(self.session, "context_window", 0),
         )
 
     def on_mount(self) -> None:
@@ -135,6 +140,9 @@ class CodeAgentApp(App):
             self._clear_ask()
             self.query_one("#log", ConversationLog).append(f"[permission] {value}")
             responder(value)
+            return
+        if self._rename_active:
+            self._finish_rename(value)
             return
         if value.startswith("/"):
             if self._busy():
@@ -220,6 +228,7 @@ class CodeAgentApp(App):
             on_ask_timeout=lambda: self._clear_ask(),
             on_assistant_start=self._on_assistant_start,
             on_tool_start=self._on_tool_start,
+            on_stats=self._on_stats,
         )
         self._worker.start(task)
 
@@ -271,6 +280,43 @@ class CodeAgentApp(App):
         self._ask_responder = responder
         self.query_one("#input", PromptInput).set_ask_mode(prompt)
         self.query_one("#input", PromptInput).focus()
+
+    def action_rename_session(self) -> None:
+        if self._busy():
+            self.notify("agent 正在运行中，请稍候", severity="warning")
+            return
+        if self._ask_responder is not None:
+            self.notify("请先处理权限询问", severity="warning")
+            return
+        self._rename_active = True
+        inp = self.query_one("#input", PromptInput)
+        inp.set_rename_mode()
+        inp.focus()
+
+    def action_cancel_rename(self) -> None:
+        if not self._rename_active:
+            return
+        self._rename_active = False
+        self.query_one("#input", PromptInput).clear_rename_mode()
+
+    def _finish_rename(self, value: str) -> None:
+        self._rename_active = False
+        self.query_one("#input", PromptInput).clear_rename_mode()
+        title = value.strip()
+        if not title:
+            self.notify("未输入会话名", severity="warning")
+            return
+        try:
+            renamed = self.session.rename_session(title)
+        except (KeyError, ValueError) as e:
+            self.notify(f"rename failed: {e}", severity="error")
+            return
+        self.notify(f"renamed: {renamed}")
+        self.query_one("#sessions", SessionList).refresh_from(self.store)
+        self._refresh_status("idle")
+
+    def _on_stats(self, usage) -> None:
+        self._refresh_status("running")
 
     def action_new_session(self) -> None:
         if self._busy():

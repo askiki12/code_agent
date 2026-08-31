@@ -5,7 +5,7 @@ import threading
 
 
 class AgentWorker:
-    def __init__(self, app, session, *, on_delta, on_tool, on_done, on_ask=None, on_ask_timeout=None, on_assistant_start=None, on_tool_start=None) -> None:
+    def __init__(self, app, session, *, on_delta, on_tool, on_done, on_ask=None, on_ask_timeout=None, on_assistant_start=None, on_tool_start=None, on_stats=None) -> None:
         self.app = app
         self.session = session
         self._on_delta = on_delta
@@ -15,6 +15,7 @@ class AgentWorker:
         self._on_ask_timeout = on_ask_timeout
         self._on_assistant_start = on_assistant_start
         self._on_tool_start = on_tool_start
+        self._on_stats = on_stats
         self._thread: threading.Thread | None = None
 
     def start(self, task: str) -> None:
@@ -34,6 +35,7 @@ class AgentWorker:
                 on_tool=self._tool,
                 on_assistant_start=self._assistant_start,
                 on_tool_start=self._tool_start,
+                on_stats=self._stats,
             )
         except Exception as e:  # noqa: BLE001
             from code_agent.agent import RunResult
@@ -76,3 +78,7 @@ class AgentWorker:
                     except Exception:
                         pass  # UI 线程已关闭
         return holder["answer"]
+
+    def _stats(self, usage) -> None:
+        if self._on_stats is not None:
+            self.app.call_from_thread(lambda: self._on_stats(usage))
