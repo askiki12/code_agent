@@ -615,3 +615,56 @@ def test_rename_session_existing_id(tmp_path):
     s.rename_session("new name")
     meta, _ = store.load(sid)
     assert meta["title"] == "new name"
+
+
+def test_load_session_sets_heuristic_last_usage(tmp_path):
+    from code_agent.agent import AgentSession
+    from code_agent.session import SessionStore
+    store = SessionStore(str(tmp_path / "sessions"))
+    sid = store.create("t")
+    store.save(sid, [{"role": "user", "content": "hello world hello world"}])
+    s = AgentSession(workdir=str(tmp_path), llm=object(), store=store)
+    assert s.last_usage is None
+    s.load_session(sid)
+    assert s.last_usage is not None
+    assert s.last_usage.heuristic is True
+    assert s.last_usage.prompt_tokens > 0
+
+
+def test_new_session_clears_last_usage(tmp_path):
+    from code_agent.agent import AgentSession
+    from code_agent.session import SessionStore
+
+    class _LLM:
+        def chat(self, messages, tools=None, on_delta=None):
+            return LLMResponse(content="done", tool_calls=[])
+
+    store = SessionStore(str(tmp_path / "sessions"))
+    s = AgentSession(workdir=str(tmp_path), llm=_LLM(), store=store)
+    s.run_task("task")
+    assert s.last_usage is not None
+    s.new_session()
+    assert s.last_usage is None
+
+
+def test_current_title(tmp_path):
+    from code_agent.agent import AgentSession
+    from code_agent.session import SessionStore
+    store = SessionStore(str(tmp_path / "sessions"))
+    sid = store.create("my title")
+    s = AgentSession(workdir=str(tmp_path), llm=object(), store=store, session_id=sid)
+    assert s.current_title() == "my title"
+
+
+def test_current_title_new_session(tmp_path):
+    from code_agent.agent import AgentSession
+    from code_agent.session import SessionStore
+    store = SessionStore(str(tmp_path / "sessions"))
+    s = AgentSession(workdir=str(tmp_path), llm=object(), store=store)
+    assert s.current_title() == ""
+
+
+def test_current_title_without_store(tmp_path):
+    from code_agent.agent import AgentSession
+    s = AgentSession(workdir=str(tmp_path), llm=object())
+    assert s.current_title() == ""

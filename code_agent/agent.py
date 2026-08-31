@@ -245,10 +245,16 @@ class AgentSession:
                 return _make_title(str(m.get("content", "")))
         return ""
 
+    def current_title(self) -> str:
+        if self.session_id is None or self.store is None:
+            return ""
+        return self.store.get_title(self.session_id)
+
     def new_session(self) -> None:
         self.conversation = Conversation()
         self.conversation.add_system(self._system_prompt)
         self.session_id = None
+        self.last_usage = None
 
     def load_session(self, session_id: str) -> None:
         if self.store is None:
@@ -257,6 +263,12 @@ class AgentSession:
         text = "\n".join(json.dumps(m, ensure_ascii=False) for m in messages)
         self.conversation = Conversation.from_jsonl(text, system_prompt=self._system_prompt)
         self.session_id = session_id
+        self.last_usage = Usage(
+            prompt_tokens=sum(
+                estimate_tokens(str(m.get("content", ""))) for m in self.conversation.messages
+            ),
+            heuristic=True,
+        )
 
     def _run_tool(self, tc) -> ToolResult:
         if tc.name == "dispatch_subagent":
