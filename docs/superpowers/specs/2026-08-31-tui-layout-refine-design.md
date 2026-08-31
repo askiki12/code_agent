@@ -17,7 +17,7 @@
 
 - **切会话刷新语义**：`load_session` 时用 `estimate_tokens` 对已加载对话算启发式 prompt token 数，立即显示该会话的 ctx（带 `~` 表示估算）；`new_session` 清空 `last_usage`，不显示 stats。
 - **格式**：`213.0k(21%)` 恒显一位小数（`_fmt_ctx(n) = f"{n/1000:.1f}k"`，即 213000→"213.0k"、90000→"90.0k"）；`pct = int(prompt / W * 100)`（W 为上下文窗口，沿用上迭代决定）；cache 段 `cache:N%`（`cached_tokens>0` 才显示，否则整段隐藏）；启发式加 `~` 前缀。
-- **底栏实现**：子类化 `Footer` + 右停靠 `Static`（已验证 recompose 后子部件存活），保留标准快捷键样式。
+- **底栏实现**：`StatusFooter` 纯 Widget **render 自绘**（左快捷键 + 右 stats），不子类化 Footer（实施发现 Footer compose 覆写会破坏快捷键渲染，见 §5.1 注）。
 
 ## 3. 范围
 
@@ -25,7 +25,7 @@
 - `workspace.py`：新增 `Workspace.path` property（返回 `data["path"]`）。
 - `session.py`：新增 `SessionStore.get_title(session_id) -> str`（只读首行 meta，坏文件/缺失返回 ""）。
 - `agent.py`：`AgentSession.current_title()`；`load_session` 设置启发式 `last_usage`；`new_session` 清空 `last_usage`。
-- `tui/widgets.py`：`StatusBar.update_status` 去掉 usage/context_window 参数、改收 session_title；删除 `_usage_segments`/`_fmt_k`；新增 `_fmt_ctx`/`_footer_stats`；新增 `StatusFooter(Footer)`（右停靠 `#footer-stats` + `update_stats(text)`）。
+- `tui/widgets.py`：`StatusBar.update_status` 去掉 usage/context_window 参数、改收 session_title；删除 `_usage_segments`/`_fmt_k`；新增 `_fmt_ctx`/`_footer_stats`；新增 `StatusFooter`（render 自绘，左快捷键右 stats + `update_stats(text)`）。
 - `tui/app.py`：`compose()` 用 `StatusFooter` 替换 `Footer()`；`_refresh_status` 同步刷底栏 stats；`_workspace_line` 显示完整路径；`_refresh_status` 传 session 标题。
 - 测试、文档同步、ADR-024。
 
@@ -56,18 +56,18 @@
 
 ### 5.1 控件
 
-`tui/widgets.py` 新增：
+`tui/widgets.py` 新增（**实施修正：render 自绘方案，原 Footer 子类方案实测破坏快捷键渲染，见下注**）：
 
 ```
-class StatusFooter(Footer):
-    DEFAULT_CSS: "#footer-stats { dock: right; margin-right: 1; }"
-    __init__: 建 self._stats = Static("", id="footer-stats")
-    compose(): yield self._stats; yield from super().compose()
-    update_stats(text): self._stats.update(text)
+class StatusFooter(Widget):
+    DEFAULT_CSS: dock bottom, height 1, background $footer-background
+    __init__: self._stats_text = ""
+    update_stats(text): self._stats_text = text; self.refresh()
+    render(): Text = 左段(快捷键文本) + 右对齐 stats（_binding_text 从 screen.active_bindings 取 show=True 的绑定，get_key_display 得键名）
 ```
 
-- 右停靠 + 标准快捷键渲染共存（已验证）。
-- `compose()` 中 `yield from super().compose()`：Footer 无 `__init__` 必填子类冲突（构造时 `super().__init__()` 不带 children）。
+- 左侧渲染快捷键（`^q Quit ^n New …`），右侧右对齐紧凑 stats，与快捷键同排共存。
+- **注（2026-08-31 实施发现）**：`StatusFooter(Footer)` 子类 + compose 覆写（先 yield `#footer-stats` 再 `yield from super().compose()`）实测导致 FooterKeys **不绘制**（子部件存在但不渲染，纯 `render()` 返回 Blank）。根因是 Footer 为 compose 型 ScrollableContainer，任何在其 compose 前置额外子部件的覆写都会破坏快捷键布局。改为纯 `Widget` 的 render 自绘，快捷键文本自行从 `screen.active_bindings` 渲染。
 
 ### 5.2 纯函数
 
@@ -114,7 +114,7 @@ _footer_stats(usage, context_window) -> str:
 - `test_workspace.py`：`Workspace.path` == realpath。
 - `test_session.py`：`get_title` 正常/缺失/坏文件 → ""。
 - `test_agent.py`：`load_session` 后 `last_usage.heuristic is True` 且 `prompt_tokens > 0`；`new_session` 后 `last_usage is None`；`current_title` 有会话名 / 无 id / 无 store。
-- `test_tui_widgets.py`：`_fmt_ctx`（213000→"213.0k"、90000→"90.0k"）；`_footer_stats`（None→""、正常含 cache、无 cache 省略、启发式 `~`）；`StatusBar.update_status` 渲染完整路径与 session 标题；`StatusFooter.update_stats` 更新 `#footer-stats` 文本。删除 `_usage_segments`/`_fmt_k` 相关旧用例。
+- `test_tui_widgets.py`：`_fmt_ctx`（213000→"213.0k"、90000→"90.0k"）；`_footer_stats`（None→""、正常含 cache、无 cache 省略、启发式 `~`）；`StatusBar.update_status` 渲染完整路径与 session 标题；`StatusFooter` render 渲染快捷键与 stats（`update_stats` 后 `render().plain`）。删除 `_usage_segments`/`_fmt_k` 相关旧用例。
 - `test_tui_app.py`：切会话（on_option_list_option_selected）后底栏 stats 更新为该会话启发式值；Ctrl+N 后底栏无 stats。
 - 回归：全量 `uv run pytest` 全绿 + `uv run python -m code_agent --help` 正常 + 凭据 grep 复核。
 

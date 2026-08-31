@@ -83,7 +83,7 @@ uv run python -m code_agent --interactive
   - `test_agent.py`：用 mock 模型跑通完整循环（含终止条件与错误恢复、dispatch_subagent 子智能体派遣/阉割双层强制/权限继承、上下文预算 B、on_stats 真实/启发式 usage、rename_session，不含真实 API）。
   - `test_cli.py`：`.env` 加载、缺 key 报错、一次性任务入口、`--context-window` 传递、`/rename` 命令。
   - `test_tui.py`：format_*/_append_tool_line/_line_style 纯函数、run_tui 冒烟桩（StubConsole/StubLive 离线跑通 on_delta/on_tool 回调）。
-  - `test_tui_widgets.py`：ConversationLog/SessionList/SkillList/PromptInput 控件（append/update/clear、行配色 `_line_style`、会话列表刷新、技能列表刷新、`!` 命令模式类与占位符切换）、`_fmt_ctx`/`_footer_stats`（None→""、正常含 cache、无 cache 省略、启发式 `~`）/StatusBar（完整路径 + session 标题渲染）/StatusFooter（`update_stats` 更新 `#footer-stats`）。
+  - `test_tui_widgets.py`：ConversationLog/SessionList/SkillList/PromptInput 控件（append/update/clear、行配色 `_line_style`、会话列表刷新、技能列表刷新、`!` 命令模式类与占位符切换）、`_fmt_ctx`/`_footer_stats`（None→""、正常含 cache、无 cache 省略、启发式 `~`）/StatusBar（完整路径 + session 标题渲染）/StatusFooter（render 渲染快捷键 + stats）。
   - `test_tui_worker.py`：AgentWorker 后台线程与 call_from_thread 桥（流式 on_delta/on_tool + on_done，桥接 on_assistant_start/on_tool_start/on_stats 新回调，离线 mock 模型）。
   - `test_tui_app.py`：CodeAgentApp 应用（多轮任务渲染 user/assistant 行与回合顺序、Ctrl+N 新建会话清空对话、`!cmd` 命令执行与超时、`[subagent]` 运行标注、skill 加载标注 `[skill] 加载/✓/✗`、Ctrl+S 技能弹窗选中派发技能任务、Ctrl+P `show=False` 隐藏、命令面板禁用、Ctrl+R 重命名与 Esc 取消、on_stats 更新状态栏，离线 mock 模型）。
   - `test_session.py`：SessionStore 创建/保存/加载/列表/坏文件容错、rename 与标题 pin（pin 不被后续保存覆盖）。
