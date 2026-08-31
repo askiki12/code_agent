@@ -104,3 +104,57 @@ def test_skill_list_refresh(tmp_path):
     sl = SkillList()
     sl.refresh_from(reg)
     assert sl.option_count == 1
+
+
+from code_agent.llm import Usage
+from code_agent.tui.widgets import _usage_segments, StatusBar
+
+
+def test_usage_segments_full():
+    ctx, cache = _usage_segments(Usage(prompt_tokens=12340, cached_tokens=5000), 90000)
+    assert ctx == "ctx 12.3k/90k 13%"
+    assert cache == "cache 40%"
+
+
+def test_usage_segments_heuristic_prefix_and_no_cache():
+    ctx, cache = _usage_segments(Usage(prompt_tokens=1000, heuristic=True), 90000)
+    assert ctx == "ctx ~1k/90k 1%"
+    assert cache == ""
+
+
+def test_usage_segments_none():
+    assert _usage_segments(None, 90000) == ("", "")
+
+
+def test_usage_segments_zero_cache_omitted():
+    ctx, cache = _usage_segments(Usage(prompt_tokens=5000, cached_tokens=0), 90000)
+    assert "cache" not in cache
+    assert ctx == "ctx 5k/90k 5%"
+
+
+def test_usage_segments_compact_drops_pct_and_cache():
+    ctx, cache = _usage_segments(Usage(prompt_tokens=12340, cached_tokens=5000), 90000, compact=True)
+    assert ctx == "ctx 12.3k/90k"
+    assert cache == ""
+
+
+def test_status_bar_renders_usage(monkeypatch):
+    monkeypatch.setattr("code_agent.tui.widgets._status_width", lambda: 200)
+    sb = StatusBar()
+    sb.update_status("idle", model="m", session_id="s1",
+                     workspace_line="Workspace: w", usage=Usage(prompt_tokens=12000, cached_tokens=3000),
+                     context_window=90000)
+    plain = sb.render().plain
+    assert "ctx 12k/90k 13%" in plain
+    assert "cache 25%" in plain
+
+
+def test_status_bar_trims_pct_when_narrow(monkeypatch):
+    monkeypatch.setattr("code_agent.tui.widgets._status_width", lambda: 30)
+    sb = StatusBar()
+    sb.update_status("idle", model="m", session_id="s1",
+                     workspace_line="Workspace: w", usage=Usage(prompt_tokens=12000),
+                     context_window=90000)
+    plain = sb.render().plain
+    assert "12k/90k" in plain
+    assert "%" not in plain
