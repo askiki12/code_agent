@@ -842,3 +842,131 @@ def test_run_tool_validate_raise_guarded(workdir):
     assert res.ok is False
     assert "tool crashed" in res.output
     assert "validate broke" in res.output
+
+
+def test_memory_default_off_no_memory_tools(workdir):
+    s = AgentSession(workdir=workdir, llm=object())
+    assert s._registry.get("remember") is None
+    assert s._registry.get("recall") is None
+    assert s._registry.get("create_skill") is None
+
+
+def test_memory_tools_present_when_enabled(workdir):
+    s = AgentSession(workdir=workdir, llm=object(), memory=True)
+    assert s._registry.get("remember") is not None
+    assert s._registry.get("recall") is not None
+    assert s._registry.get("create_skill") is not None
+    names = {t["function"]["name"] for t in s._registry.schemas()}
+    assert {"remember", "recall", "create_skill"} <= names
+
+
+def test_remember_recall_tools(workdir):
+    from code_agent.llm import ToolCall
+    s = AgentSession(workdir=workdir, llm=object(), memory=True)
+    r = s._run_tool(ToolCall(id="c1", name="remember", arguments={"content": "the project uses uv"}))
+    assert r.ok is True
+    r2 = s._run_tool(ToolCall(id="c2", name="recall", arguments={"query": "uv"}))
+    assert r2.ok is True and "uv" in r2.output
+
+
+def test_create_skill_tool(workdir):
+    from code_agent.llm import ToolCall
+    from code_agent.skills import SkillRegistry
+    reg = SkillRegistry(workdir)
+    s = AgentSession(workdir=workdir, llm=object(), skills=reg, memory=True)
+    r = s._run_tool(ToolCall(id="c1", name="create_skill", arguments={
+        "name": "build", "description": "build", "content": "run pytest"}))
+    assert r.ok is True
+    assert reg.load("build") is not None
+
+
+def test_remember_when_disabled(workdir):
+    from code_agent.llm import ToolCall
+    s = AgentSession(workdir=workdir, llm=object())
+    r = s._run_tool(ToolCall(id="c1", name="remember", arguments={"content": "x"}))
+    assert r.ok is False and "unknown tool" in r.output
+
+
+def test_memory_auto_inject(workdir):
+    class _LLM:
+        def chat(self, messages, tools=None, on_delta=None):
+            return LLMResponse(content="done", tool_calls=[])
+
+    s = AgentSession(workdir=workdir, llm=_LLM(), memory=True)
+    s._memory.add("the project uses uv for the environment")
+    s.run_task("set up the uv environment")
+    assert any(
+        "[Project memory]" in str(m.get("content", "")) for m in s.conversation.messages
+        if m["role"] == "system"
+    )
+
+
+def test_memory_inject_once(workdir):
+    class _LLM:
+        def chat(self, messages, tools=None, on_delta=None):
+            return LLMResponse(content="done", tool_calls=[])
+
+    s = AgentSession(workdir=workdir, llm=_LLM(), memory=True)
+    s._memory.add("uv environment")
+    s.run_task("uv task one")
+    s.run_task("uv task two")
+    count = sum(1 for m in s.conversation.messages
+                if "[Project memory]" in str(m.get("content", "")))
+    assert count == 1
+
+
+def test_memory_auto_memorize_on_success(workdir):
+    class _LLM:
+        def chat(self, messages, tools=None, on_delta=None):
+            last = str(messages[-1]["content"])
+            if "Extract 1-3" in last:
+                return LLMResponse(content='["the project builds with uv"]', tool_calls=[])
+            return LLMResponse(content="done", tool_calls=[])
+
+    s = AgentSession(workdir=workdir, llm=_LLM(), memory=True)
+    s.run_task("do something")
+    assert any("the project builds with uv" in e.content for e in s._memory.all())
+
+
+def test_memory_auto_memorize_skipped_on_failure(workdir):
+    from code_agent.llm import ToolCall
+
+    class _LLM:
+        def __init__(self):
+            self.n = 0
+
+        def chat(self, messages, tools=None, on_delta=None):
+            self.n += 1
+            if self.n <= 3:
+                return LLMResponse(content="", tool_calls=[ToolCall(id=f"c{self.n}", name="nonexistent", arguments={})])
+            return LLMResponse(content="done", tool_calls=[])
+
+    s = AgentSession(workdir=workdir, llm=_LLM(), memory=True, max_iterations=5)
+    res = s.run_task("boom")
+    assert res.finished is False
+    assert s._memory.all() == []
+
+
+def test_subagent_memory_disabled(workdir):
+    from code_agent.llm import ToolCall
+
+    class _LLM:
+        def __init__(self):
+            self.n = 0
+            self.tools_calls = []
+
+        def chat(self, messages, tools=None, on_delta=None):
+            self.n += 1
+            self.tools_calls.append([t["function"]["name"] for t in (tools or [])])
+            if self.n == 1:
+                return LLMResponse(content="", tool_calls=[ToolCall(id="c1", name="dispatch_subagent", arguments={"task": "sub"})])
+            if self.n == 2:
+                return LLMResponse(content="sub done", tool_calls=[])
+            return LLMResponse(content="[]", tool_calls=[])  # parent auto-summary
+
+    llm = _LLM()
+    s = AgentSession(workdir=workdir, llm=llm, memory=True)
+    s.run_task("parent task")
+    sub_tools = set(llm.tools_calls[1])
+    assert "dispatch_subagent" not in sub_tools
+    assert not ({"remember", "recall", "create_skill"} & sub_tools)

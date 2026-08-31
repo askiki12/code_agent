@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from dataclasses import dataclass
 from typing import Any, Callable
 
 from code_agent.context import Conversation, estimate_tokens
 from code_agent.llm import LLMError, Usage
+from code_agent.memory import MemoryStore
 from code_agent.permissions import Policy
 from code_agent.session import SessionStore, _make_title
 from code_agent.skills import SkillRegistry
@@ -82,6 +84,61 @@ class DispatchSubagentTool(Tool):
         return self._session._dispatch_subagent(args, on_delta=self._session._on_delta)
 
 
+class RememberTool(Tool):
+    name = "remember"
+    description = "Save a durable piece of project knowledge to the project memory for future sessions."
+    parameters = {
+        "content": {"type": "string", "description": "The knowledge/fact/gotcha to remember"},
+        "tags": {"type": "string", "description": "Comma-separated tags (optional)"},
+    }
+    required = ["content"]
+
+    def __init__(self, session, *, visible: bool) -> None:
+        super().__init__()
+        self._session = session
+        self.visible = visible
+
+    def execute(self, args: dict, workdir: str) -> ToolResult:
+        return self._session._remember(args)
+
+
+class RecallTool(Tool):
+    name = "recall"
+    description = "Search the project memory for relevant knowledge from prior sessions."
+    parameters = {
+        "query": {"type": "string", "description": "What to search for"},
+        "top_k": {"type": "integer", "description": "Max results (default 3)"},
+    }
+    required = ["query"]
+
+    def __init__(self, session, *, visible: bool) -> None:
+        super().__init__()
+        self._session = session
+        self.visible = visible
+
+    def execute(self, args: dict, workdir: str) -> ToolResult:
+        return self._session._recall(args)
+
+
+class CreateSkillTool(Tool):
+    name = "create_skill"
+    description = "Save a reusable workflow as a project skill (SKILL.md). It becomes available via use_skill in future sessions."
+    parameters = {
+        "name": {"type": "string", "description": "Skill name (letters, digits, - and _)"},
+        "description": {"type": "string", "description": "Short description"},
+        "content": {"type": "string", "description": "Markdown instructions body"},
+    }
+    required = ["name", "description", "content"]
+
+    def __init__(self, session, *, visible: bool) -> None:
+        super().__init__()
+        self._session = session
+        self.visible = visible
+
+    def execute(self, args: dict, workdir: str) -> ToolResult:
+        return self._session._create_skill(args)
+
+
 @dataclass
 class RunResult:
     final_text: str
@@ -109,6 +166,7 @@ class AgentSession:
         skills: SkillRegistry | None = None,
         allow_subagent: bool = True,
         context_window: int | None = None,
+        memory: bool = False,
     ) -> None:
         self.workdir = workdir
         self.llm = llm
@@ -123,6 +181,9 @@ class AgentSession:
         self.session_id = session_id
         self.skills = skills
         self.allow_subagent = allow_subagent
+        self.memory = memory
+        self._memory = MemoryStore(os.path.join(workdir, ".code_agent", "memory")) if memory else None
+        self._memory_injected = False
         self.last_usage: Usage | None = None
         self.context_window = context_window if context_window else 1_000_000
         if context_window:
@@ -131,6 +192,10 @@ class AgentSession:
         tools = list(BASE_TOOLS)
         tools.append(UseSkillTool(self, visible=self.skills is not None))
         tools.append(DispatchSubagentTool(self, visible=self.allow_subagent))
+        if memory:
+            tools.append(RememberTool(self, visible=True))
+            tools.append(RecallTool(self, visible=True))
+            tools.append(CreateSkillTool(self, visible=True))
         self._registry = ToolRegistry(tools)
         skills_section = ""
         if skills is not None:
@@ -163,91 +228,151 @@ class AgentSession:
         on_stats: Callable[[Usage], None] | None = None,
     ) -> RunResult:
         self.conversation.add_user(task)
+        self._inject_memory(task)
         self._on_delta = on_delta
+        result: RunResult | None = None
+        try:
+            result = self._run_loop(on_delta, on_tool, on_assistant_start, on_tool_start, on_stats)
+        finally:
+            self._persist()
+        if result is not None and self._memory is not None and result.finished:
+            self._auto_memorize()
+        return result
+
+    def _run_loop(
+        self,
+        on_delta: Callable[[str], None] | None,
+        on_tool: Callable[[str, ToolResult], None] | None,
+        on_assistant_start: Callable[[], None] | None,
+        on_tool_start: Callable[[str, dict], None] | None,
+        on_stats: Callable[[Usage], None] | None,
+    ) -> RunResult:
+        """原 run_task 的 for 循环体（含内层 LLMError 处理与全部 return），去掉外层 try/finally。"""
         consecutive_failures = 0
         llm_error_count = 0
-        try:
-            for iteration in range(1, self.max_iterations + 1):
+        for iteration in range(1, self.max_iterations + 1):
+            if self.debug:
+                print(f"[agent] iteration {iteration}")
+            messages = self.conversation.build_messages(self.max_context_tokens)
+            try:
+                tools = self._registry.schemas()
+                if on_assistant_start is not None:
+                    on_assistant_start()
+                response = self.llm.chat(messages, tools=tools, on_delta=on_delta)
+            except LLMError as e:
+                llm_error_count += 1
+                if llm_error_count >= MAX_CONSECUTIVE_FAILURES:
+                    return RunResult(final_text="", iterations=iteration, finished=False, reason=f"llm error: {e}")
+                self.conversation.add_user(
+                    f"[system] An LLM error occurred: {e}. "
+                    "Please reply in plain text without tool calls, or continue if possible."
+                )
+                continue
+            llm_error_count = 0
+            if response.usage is not None:
+                usage = response.usage
+            else:
+                usage = Usage(
+                    prompt_tokens=sum(
+                        estimate_tokens(str(m.get("content", ""))) for m in messages
+                    ),
+                    heuristic=True,
+                )
+            self.last_usage = usage
+            if on_stats is not None:
+                on_stats(usage)
+            self.conversation.add_assistant(response.content, response.tool_calls or None)
+            if not response.tool_calls:
+                return RunResult(
+                    final_text=response.content,
+                    iterations=iteration,
+                    finished=True,
+                    reason="complete",
+                )
+            round_failed = False
+            for tc in response.tool_calls:
+                if on_tool_start is not None:
+                    on_tool_start(tc.name, tc.arguments)
+                result = self._run_tool(tc)
+                if on_tool is not None:
+                    on_tool(tc.name, result)
+                if not result.ok:
+                    round_failed = True
                 if self.debug:
-                    print(f"[agent] iteration {iteration}")
-                messages = self.conversation.build_messages(self.max_context_tokens)
-                try:
-                    tools = self._registry.schemas()
-                    if on_assistant_start is not None:
-                        on_assistant_start()
-                    response = self.llm.chat(messages, tools=tools, on_delta=on_delta)
-                except LLMError as e:
-                    llm_error_count += 1
-                    if llm_error_count >= MAX_CONSECUTIVE_FAILURES:
-                        return RunResult(
-                            final_text="",
-                            iterations=iteration,
-                            finished=False,
-                            reason=f"llm error: {e}",
-                        )
-                    self.conversation.add_user(
-                        f"[system] An LLM error occurred: {e}. "
-                        "Please reply in plain text without tool calls, or continue if possible."
-                    )
-                    continue
-                llm_error_count = 0
-                if response.usage is not None:
-                    usage = response.usage
-                else:
-                    usage = Usage(
-                        prompt_tokens=sum(
-                            estimate_tokens(str(m.get("content", ""))) for m in messages
-                        ),
-                        heuristic=True,
-                    )
-                self.last_usage = usage
-                if on_stats is not None:
-                    on_stats(usage)
-                self.conversation.add_assistant(response.content, response.tool_calls or None)
-                if not response.tool_calls:
-                    return RunResult(
-                        final_text=response.content,
-                        iterations=iteration,
-                        finished=True,
-                        reason="complete",
-                    )
-                round_failed = False
-                for tc in response.tool_calls:
-                    if on_tool_start is not None:
-                        on_tool_start(tc.name, tc.arguments)
-                    result = self._run_tool(tc)
-                    if on_tool is not None:
-                        on_tool(tc.name, result)
-                    if not result.ok:
-                        round_failed = True
-                    if self.debug:
-                        print(f"[tool] {tc.name}: ok={result.ok} truncated={result.truncated}")
-                    self.conversation.add_tool(tc.id, tc.name, result.as_message())
-                consecutive_failures = consecutive_failures + 1 if round_failed else 0
-                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                    return RunResult(
-                        final_text="",
-                        iterations=iteration,
-                        finished=False,
-                        reason="too many consecutive tool failures",
-                    )
-            return RunResult(
-                final_text="",
-                iterations=self.max_iterations,
-                finished=False,
-                reason="max_iterations",
+                    print(f"[tool] {tc.name}: ok={result.ok} truncated={result.truncated}")
+                self.conversation.add_tool(tc.id, tc.name, result.as_message())
+            consecutive_failures = consecutive_failures + 1 if round_failed else 0
+            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                return RunResult(
+                    final_text="",
+                    iterations=iteration,
+                    finished=False,
+                    reason="too many consecutive tool failures",
+                )
+        return RunResult(
+            final_text="",
+            iterations=self.max_iterations,
+            finished=False,
+            reason="max_iterations",
+        )
+
+    def _persist(self) -> None:
+        if self.store is not None:
+            title = self._title()
+            try:
+                if self.session_id is None:
+                    self.session_id = self.store.create(title)
+                self.store.save(self.session_id, self.conversation.messages, title=title)
+                if self.workspace is not None:
+                    self.workspace.touch_session(self.session_id)
+            except (OSError, ValueError) as e:
+                print(f"[agent] warning: failed to persist session/workspace: {e}", file=sys.stderr)
+
+    def _inject_memory(self, task: str) -> None:
+        if self._memory is None or self._memory_injected:
+            return
+        self._memory_injected = True
+        entries = self._memory.recall(task, top_k=3)
+        if not entries:
+            return
+        lines = "\n".join(f"- {e.content}" for e in entries)
+        self.conversation.add_system(
+            "[Project memory]\nPrior sessions recorded about this project (use recall for more; remember to save new knowledge):\n"
+            + lines
+        )
+
+    def _auto_memorize(self) -> None:
+        try:
+            resp = self.llm.chat(
+                [
+                    {"role": "system", "content": "You are an agent that just finished a task in a coding project."},
+                    {
+                        "role": "user",
+                        "content": "Extract 1-3 durable, reusable pieces of project knowledge from this conversation "
+                        "(facts, decisions, gotchas, key file locations). Reply with a JSON array of strings only.\n\n"
+                        + self._memory_transcript(),
+                    },
+                ]
             )
-        finally:
-            if self.store is not None:
-                title = self._title()
-                try:
-                    if self.session_id is None:
-                        self.session_id = self.store.create(title)
-                    self.store.save(self.session_id, self.conversation.messages, title=title)
-                    if self.workspace is not None:
-                        self.workspace.touch_session(self.session_id)
-                except (OSError, ValueError) as e:
-                    print(f"[agent] warning: failed to persist session/workspace: {e}", file=sys.stderr)
+            content = resp.content.strip()
+            try:
+                items = json.loads(content)
+                entries = [str(i) for i in items if isinstance(i, str)] if isinstance(items, list) else []
+            except json.JSONDecodeError:
+                entries = [content]
+            for e in entries:
+                if e.strip():
+                    self._memory.add(e.strip(), source_session=self.session_id or "")
+        except Exception:  # noqa: BLE001 - auto-memorize must never break the loop
+            pass
+
+    def _memory_transcript(self) -> str:
+        parts = []
+        for m in self.conversation.messages[-40:]:
+            role = m.get("role", "")
+            text = str(m.get("content", ""))[:200]
+            parts.append(f"{role}: {text}")
+        return "\n".join(parts)[:6000]
 
     def _title(self) -> str:
         for m in self.conversation.messages:
@@ -265,6 +390,7 @@ class AgentSession:
         self.conversation.add_system(self._system_prompt)
         self.session_id = None
         self.last_usage = None
+        self._memory_injected = False
 
     def load_session(self, session_id: str) -> None:
         if self.store is None:
@@ -273,6 +399,7 @@ class AgentSession:
         text = "\n".join(json.dumps(m, ensure_ascii=False) for m in messages)
         self.conversation = Conversation.from_jsonl(text, system_prompt=self._system_prompt)
         self.session_id = session_id
+        self._memory_injected = False
         self.last_usage = Usage(
             prompt_tokens=sum(
                 estimate_tokens(str(m.get("content", ""))) for m in self.conversation.messages
@@ -320,6 +447,52 @@ class AgentSession:
             return ToolResult(ok=False, output=f"skill not found: {name}")
         return ToolResult(ok=True, output=content)
 
+    def _remember(self, arguments: dict) -> ToolResult:
+        if self._memory is None:
+            return ToolResult(ok=False, output="memory is disabled")
+        if not isinstance(arguments, dict):
+            return ToolResult(ok=False, output="arguments must be an object")
+        content = str(arguments.get("content", ""))
+        if not content.strip():
+            return ToolResult(ok=False, output="content is required")
+        tags = [t.strip() for t in str(arguments.get("tags", "")).split(",") if t.strip()]
+        entry = self._memory.add(content, tags=tags, source_session=self.session_id or "")
+        return ToolResult(ok=True, output=f"remembered: {entry.id}")
+
+    def _recall(self, arguments: dict) -> ToolResult:
+        if self._memory is None:
+            return ToolResult(ok=False, output="memory is disabled")
+        query = str(arguments.get("query", ""))
+        if not query.strip():
+            return ToolResult(ok=False, output="query is required")
+        top_k = arguments.get("top_k", 3)
+        if not isinstance(top_k, int) or top_k < 1:
+            top_k = 3
+        top_k = min(top_k, 10)
+        entries = self._memory.recall(query, top_k=top_k)
+        if not entries:
+            return ToolResult(ok=True, output="(no relevant memories)")
+        lines = [
+            f"{i}. {e.content}" + (f" [tags: {', '.join(e.tags)}]" if e.tags else "")
+            for i, e in enumerate(entries, 1)
+        ]
+        out, truncated = truncate("\n".join(lines))
+        return ToolResult(ok=True, output=out, truncated=truncated)
+
+    def _create_skill(self, arguments: dict) -> ToolResult:
+        if self.skills is None:
+            return ToolResult(ok=False, output="skills are not available")
+        name = str(arguments.get("name", ""))
+        description = str(arguments.get("description", ""))
+        content = str(arguments.get("content", ""))
+        if not name or not content:
+            return ToolResult(ok=False, output="name and content are required")
+        try:
+            path = self.skills.add(name, description, content)
+        except ValueError as e:
+            return ToolResult(ok=False, output=f"invalid skill name: {e}")
+        return ToolResult(ok=True, output=f"created skill: {name} ({path})")
+
     def _dispatch_subagent(self, arguments, on_delta=None) -> ToolResult:
         if not isinstance(arguments, dict) or not str(arguments.get("task", "")).strip():
             return ToolResult(ok=False, output="task is required")
@@ -336,6 +509,7 @@ class AgentSession:
                 ask=self.ask,
                 skills=self.skills,
                 allow_subagent=False,
+                memory=False,
             )
             sub_result = sub.run_task(task, on_delta=on_delta)
         except Exception as e:  # noqa: BLE001 - last-resort guard
