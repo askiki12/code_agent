@@ -16,7 +16,7 @@
 | `skills.py` | 技能库：SkillRegistry（项目+用户级 SKILL.md 扫描/加载） | 无（纯逻辑，标准库） |
 | `llm.py` | OpenAI 兼容 API 调用（流式）、响应/工具调用解析、usage/上下文窗口解析、重试 | requests |
 | `web.py` | 网络检索：公网 URL 校验（SSRF）、HTML 文本提取、关键词搜索（DDG Lite）、唯一联网点 fetch/search（session 可注入） | requests |
-| `tui/` 包 | Textual 终端界面：app.py（CodeAgentApp 全屏应用）、widgets.py（StatusBar/ConversationLog/SessionList/PromptInput）、worker.py（AgentWorker 后台线程 + call_from_thread 桥）；format_*/_line_style 纯函数；StatusBar 渲染 ctx/cache、Ctrl+R 重命名 | textual, rich |
+| `tui/` 包 | Textual 终端界面：app.py（CodeAgentApp 全屏应用）、widgets.py（StatusBar/StatusFooter/ConversationLog/SessionList/PromptInput）、worker.py（AgentWorker 后台线程 + call_from_thread 桥）；format_*/_line_style/_fmt_ctx/_footer_stats 纯函数；顶栏完整路径+会话名、底栏 stats、Ctrl+R 重命名 | textual, rich |
 
 ## 2. 数据流
 
@@ -44,7 +44,7 @@ loop:                                             │
   └────────────────────────────────────────────────┘
 ```
 
-每回合 chat 成功后 `on_stats(usage)` 回调（真实 usage 或启发式回退）→ TUI StatusBar 渲染 ctx 占用/窗口占比/cache 命中率。
+每回合 chat 成功后 `on_stats(usage)` 回调（真实 usage 或启发式回退）→ TUI StatusFooter 渲染底栏 stats（`_footer_stats`：`213.0k(21%) cache:40%`，启发式 `~`，分母=上下文窗口 W）；切会话/新建会话后 `_refresh_status` 按 `last_usage` 立即刷新底栏。
 
 ## 3. 模块接口约定（与实际实现一致）
 
@@ -57,14 +57,15 @@ loop:                                             │
 ### tui/ 包（Textual 全屏 TUI，ADR-020）
 - `run_tui(session, store, workspace=None, *, model="") -> None` — 构造并启动 `CodeAgentApp`；签名与 rich 版一致，cli 零改动。
 - `format_user / format_assistant / format_tool / _append_tool_line / _line_style` — 纯函数：对话行格式化与按前缀着色（user cyan、tool dim、use_skill magenta、dispatch_subagent bold cyan、subagent yellow/green、skill 加载 magenta/✓ green/✗ red、stopped yellow、session magenta），便于离线测试。
-- `CodeAgentApp(session, store, workspace=None, *, model="")` — Textual 应用：Header + StatusBar + Horizontal(ConversationLog + SessionList) + PromptInput + Footer；绑定 Ctrl+Q（退出）/ Ctrl+N（新建会话）/ Ctrl+L（切换会话列表面板）/ Ctrl+S（技能选择弹窗）/ Ctrl+R（重命名会话，Esc 取消）/ Ctrl+P（noop 且 `show=False` 彻底隐藏，Footer 不再显示）；`COMMANDS=()` + `ENABLE_COMMAND_PALETTE=False` 移除命令面板；`on_input_submitted` 处理斜杠命令（`/new` `/list` `/resume` `/exit`，复用 `handle_command`）、`!cmd` 终端命令与任务启动；`on_option_list_option_selected` 从会话列表恢复会话；`action_choose_skill` 弹出技能选择（选中回调派发"请加载技能 <name>"任务）。
+- `_fmt_ctx(n) -> str` / `_footer_stats(usage, context_window) -> str` — 纯函数：底栏 stats 紧凑格式化（`213.0k(21%)`，恒一位小数、pct 相对上下文窗口 W、启发式 `~` 前缀、无缓存隐藏 cache 段；替代已删除的 `_fmt_k`/`_usage_segments`），便于离线测试。
+- `CodeAgentApp(session, store, workspace=None, *, model="")` — Textual 应用：Header + StatusBar + Horizontal(ConversationLog + SessionList) + PromptInput + StatusFooter(id="footer")；绑定 Ctrl+Q（退出）/ Ctrl+N（新建会话）/ Ctrl+L（切换会话列表面板）/ Ctrl+S（技能选择弹窗）/ Ctrl+R（重命名会话，Esc 取消）/ Ctrl+P（noop 且 `show=False` 彻底隐藏，Footer 不再显示）；`COMMANDS=()` + `ENABLE_COMMAND_PALETTE=False` 移除命令面板；`on_input_submitted` 处理斜杠命令（`/new` `/list` `/resume` `/exit`，复用 `handle_command`）、`!cmd` 终端命令与任务启动；`on_option_list_option_selected` 从会话列表恢复会话；`action_choose_skill` 弹出技能选择（选中回调派发"请加载技能 <name>"任务）；`_workspace_line()` 返回 `Workspace: <完整路径>`；`_refresh_status` 同时刷新顶栏（路径/会话名）与底栏 stats（`last_usage` + `_footer_stats`）。
 - `!cmd` 命令模式：`PromptInput.on_input_changed` 检测到输入以 `!` 开头即切换 `command-mode` 类（输入框边框变 warning 色）并改占位符 `❯ shell: 输入命令（回车执行）`，脱离后复原——`!` 开头直接执行 shell 命令（用户主动命令，不走 policy）；后台线程 `subprocess.run(shell=True, timeout=120)`，busy 互斥（运行中拒接新任务/命令），结果回显到对话区并标注 `[exit <code>]` / `[command timed out after 120s]`。
 - skill 加载标注：`_on_tool_start` 对 `use_skill` 追加 `[skill] 加载 <name>…` 行（`_line_style` magenta）；`_on_tool` 完成时改标 `[skill] ✓ <name>`（绿）/ `[skill] ✗ <name>`（红）。子智能体运行标注：`_on_tool_start` 对 `dispatch_subagent` 追加 `[subagent] 子智能体运行中…` 行；`_on_tool` 完成时改标 `[subagent] ✓ 完成`（不回显子报告）。
 - `SkillScreen`（模态弹窗，ADR-022）：Esc 取消退出；`SkillList` 列出可用技能（name + description），↑↓ 选择、Enter 确认，`on_option_list_option_selected` `event.stop()` 防冒泡后 `dismiss` 选中技能；回调经 `action_choose_skill` → `_on_skill_chosen` 派发技能任务。
 - `_on_assistant_start`/`_on_delta`/`_on_done`：每回合 LLM 调用前新建 `assistant:` 行并重钉索引，流式增量就地刷新该行，回合结束用最终文本定型——修复多轮文本合并进第一行的问题。
 - `action_toggle_sessions`：切换会话列表面板后重渲染 body 并钳制滚动偏移（`scroll_to(y=min(...))`），修复滚动后布局重叠。
-- `AgentWorker(app, session, *, on_delta, on_tool, on_done, on_ask=None, on_ask_timeout=None, on_assistant_start=None, on_tool_start=None, on_stats=None)` — 后台线程执行 `session.run_task`（含 `_ask` 权限询问阻塞等待输入栏应答），所有 UI 更新经 `app.call_from_thread` 桥回主线程，保证 UI 始终响应；`on_assistant_start`/`on_tool_start` 经桥转发（分别对应每回合 / 每工具调用的运行态标注，`on_tool_start(name, arguments)` 携参）；`on_stats(usage)` 经桥转发每回合 usage（驱动状态栏 ctx/cache）。
-- `StatusBar / ConversationLog / SessionList / SkillList / PromptInput / SkillScreen` — 自定义控件：状态栏（工作区/model/session/运行态 + ctx 占用/窗口占比/cache 命中率，真实 usage 优先、启发式 `~` 前缀、窄宽降级紧凑）、可滚动对话日志（滚轮/PageUp/PageDown，近底自动跟随可回看）、会话列表面板（Ctrl+L 切换）、技能列表面板（Ctrl+S 弹窗）、输入栏（含权限 ask 就地确认 + `!` 命令模式状态反馈 + rename 模式 `set_rename_mode`/`clear_rename_mode`）。
+- `AgentWorker(app, session, *, on_delta, on_tool, on_done, on_ask=None, on_ask_timeout=None, on_assistant_start=None, on_tool_start=None, on_stats=None)` — 后台线程执行 `session.run_task`（含 `_ask` 权限询问阻塞等待输入栏应答），所有 UI 更新经 `app.call_from_thread` 桥回主线程，保证 UI 始终响应；`on_assistant_start`/`on_tool_start` 经桥转发（分别对应每回合 / 每工具调用的运行态标注，`on_tool_start(name, arguments)` 携参）；`on_stats(usage)` 经桥转发每回合 usage（驱动底栏 stats）。
+- `StatusBar / StatusFooter / ConversationLog / SessionList / SkillList / PromptInput / SkillScreen` — 自定义控件：状态栏（`update_status(state, model, session_title, workspace_line)` 渲染 `Workspace: <完整路径> | model: <model> | session: <会话名> ● <运行态>`，空会话名显示 `new`）、底栏（`StatusFooter(Footer)` 子类，右停靠 `#footer-stats` + `update_stats(text)`，与快捷键同排最右侧显示紧凑 stats `213.0k(21%) cache:40%`）、可滚动对话日志（滚轮/PageUp/PageDown，近底自动跟随可回看）、会话列表面板（Ctrl+L 切换）、技能列表面板（Ctrl+S 弹窗）、输入栏（含权限 ask 就地确认 + `!` 命令模式状态反馈 + rename 模式 `set_rename_mode`/`clear_rename_mode`）。
 
 ### llm.py
 - `Usage` dataclass：`prompt_tokens / completion_tokens=0 / total_tokens=0 / cached_tokens=0 / heuristic=False`；`parse_usage(data)` 解析流式末 chunk usage（无效或缺 prompt_tokens → None）。
@@ -84,10 +85,11 @@ loop:                                             │
 
 ### session.py
 - `SessionStore(root)` — root 为 `<workdir>/.code_agent/sessions`。
-- `list_sessions() -> list[dict]`（按 updated_at 倒序，含 message_count）/ `create(title) -> session_id` / `save(session_id, messages, title=None)`（全量原子写；existing 已 pin 时保持现标题）/ `load(session_id) -> (meta, messages)`（缺失抛 KeyError，坏行跳过）/ `rename(session_id, title)`（置 title + `title_pinned: true` + 更新 updated_at，缺失抛 KeyError）。
+- `list_sessions() -> list[dict]`（按 updated_at 倒序，含 message_count）/ `create(title) -> session_id` / `save(session_id, messages, title=None)`（全量原子写；existing 已 pin 时保持现标题）/ `load(session_id) -> (meta, messages)`（缺失抛 KeyError，坏行跳过）/ `rename(session_id, title)`（置 title + `title_pinned: true` + 更新 updated_at，缺失抛 KeyError）/ `get_title(session_id) -> str`（读首行 meta 的 title，会话缺失或坏 meta 返回空串，不抛）。
 
 ### workspace.py
 - `Workspace(workdir)` — 读取/初始化 `<workdir>/.code_agent/workspace.json`（id = sha1(realpath)[:12]，name = basename）。
+- `path` property — 返回工作区完整路径（realpath），供 TUI 顶栏展示完整路径。
 - `touch_session(session_id)`：更新 last_session_id + updated_at（原子写）。
 - `display() -> str`："Workspace: <name> (<id>)"；实时统计由 CLI 拼接。
 
@@ -120,6 +122,8 @@ loop:                                             │
 ### agent.py
 - `AgentSession(*, workdir, llm, max_iterations=20, max_context_tokens=90000, debug=False, store=None, session_id=None, resume=False, workspace=None, policy=None, interact=False, ask=None, skills=None, allow_subagent=True, context_window=None)` — `llm` 依赖注入，便于测试；`store`/`workspace`/`policy`/`interact`/`ask`/`skills` 均可选（无则不启用对应能力）。
 - `context_window` 属性（默认 1_000_000）；`max_context_tokens` = `min(CLI 值, int(0.7 × context_window))`（仅 context_window 提供时应用）；`last_usage: Usage | None` — 最近回合真实/启发式 usage。
+- `current_title() -> str` — 当前会话标题（经 `SessionStore.get_title`；无 store 或尚未创建会话返回空串，TUI 顶栏据此显示 `new`）。
+- `load_session(session_id)` — 恢复会话时用 `estimate_tokens` 对全部历史消息设**启发式** `last_usage`（切会话后 stats 立即刷新为该会话估算值）；`new_session()` — 新建会话时**清空** `last_usage`（防止残留上一会话 stats）。
 - `rename_session(title) -> str` — 会话重命名：无 store 抛 `ValueError`、空 title 抛 `ValueError`；无 session_id 先 `store.create(title)`，再 `store.rename`（pin）。
 - `ask`（可选回调 `(prompt) -> str`）透传给 `Policy.check` 作权限询问实现，并透传给子会话（subagent）；缺省 `input()`。
 - `use_skill` 工具在 skills 存在时注册；system prompt 注入技能列表（Available skills），加载的 SKILL.md 全文回传模型。

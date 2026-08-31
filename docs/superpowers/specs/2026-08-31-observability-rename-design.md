@@ -1,6 +1,7 @@
 # 迭代设计：TUI 可观测性（token/上下文/缓存率）+ 会话重命名
 
 > 日期：2026-08-31 ｜ 状态：已批准 ｜ 关联 ADR：ADR-023（实现时追加）
+> 注：状态栏 ctx/cache 展示已由 2026-08-31-tui-layout-refine-design.md 取代（移至底栏、格式改为 213.0k(21%)、分母仍为 W）。
 > 本 spec 是开发过程文档，随实现计划落地；最终以 `docs/architecture.md`、`docs/context-management.md`、`docs/development.md` 与 `docs/session.md`（如新增）为接口/使用权威源。
 
 ## 1. 背景与目标
