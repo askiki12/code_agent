@@ -163,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
             max_iterations=args.max_iterations,
             max_context_tokens=args.max_context_tokens,
             context_window=window,
+            memory=True,
             debug=args.debug,
             store=store,
             session_id=args.resume,

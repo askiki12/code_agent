@@ -353,3 +353,20 @@ def test_handle_command_rename(workdir, tmp_path):
     assert keep is True and s.called == "my title" and out == ["renamed: my title"]
     keep, out = handle_command("/rename", s, store)
     assert keep is True and out == ["usage: /rename <title>"]
+
+
+def test_main_passes_memory(monkeypatch, tmp_path):
+    monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
+    captured = {}
+
+    class _CaptureSession:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def run_task(self, task, on_delta=None):
+            return RunResult(final_text="ok", iterations=1, finished=True, reason="complete")
+
+    monkeypatch.setattr("code_agent.cli.AgentSession", _CaptureSession)
+    rc = main(["--prompt", "x", "--workdir", str(tmp_path)])
+    assert rc == 0
+    assert captured.get("memory") is True
