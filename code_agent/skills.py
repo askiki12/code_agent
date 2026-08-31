@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from dataclasses import dataclass
 
@@ -94,3 +95,15 @@ class SkillRegistry:
                     print(f"[skills] warning: failed to read {path}: {e}", file=sys.stderr)
                     return None
         return None
+
+    def add(self, name: str, description: str, content: str) -> str:
+        if not name or not re.match(r"^[A-Za-z0-9_-]+$", name):
+            raise ValueError(f"invalid skill name: {name!r}")
+        directory = os.path.join(self._project_dir, name)
+        os.makedirs(directory, exist_ok=True)
+        path = os.path.join(directory, "SKILL.md")
+        desc_line = " ".join(description.split())
+        text = f"---\nname: {name}\ndescription: {desc_line}\n---\n{content}\n"
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        return path

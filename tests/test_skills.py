@@ -1,5 +1,7 @@
 import os
 
+import pytest
+
 from code_agent.skills import SkillRegistry, _parse_frontmatter
 
 
@@ -84,3 +86,29 @@ def test_load_rejects_path_traversal(tmp_path):
     reg = SkillRegistry(proj, str(tmp_path / "user"))
     assert reg.load("../evil") is None
     assert reg.load("a/b") is None
+
+
+def test_skill_registry_add(tmp_path):
+    import os
+    reg = SkillRegistry(str(tmp_path / "proj"), str(tmp_path / "user"))
+    path = reg.add("build", "build and test", "1. run uv sync\n2. run uv run pytest")
+    assert os.path.isfile(path)
+    names = [s.name for s in reg.scan()]
+    assert "build" in names
+    content = reg.load("build")
+    assert "uv run pytest" in content
+
+
+def test_skill_registry_add_invalid_name(tmp_path):
+    reg = SkillRegistry(str(tmp_path / "proj"), str(tmp_path / "user"))
+    with pytest.raises(ValueError):
+        reg.add("../evil", "d", "c")
+    with pytest.raises(ValueError):
+        reg.add("has space", "d", "c")
+
+
+def test_skill_registry_add_overwrites(tmp_path):
+    reg = SkillRegistry(str(tmp_path / "proj"), str(tmp_path / "user"))
+    reg.add("build", "v1", "old")
+    reg.add("build", "v2", "new")
+    assert "new" in reg.load("build")
