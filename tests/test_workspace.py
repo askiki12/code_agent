@@ -49,3 +49,9 @@ def test_corrupt_json_rebuilds(tmp_path, capsys):
 def test_display_contains_name_and_id(tmp_path):
     w = Workspace(str(tmp_path))
     assert w.display() == f"Workspace: {w.name} ({w.id})"
+
+
+def test_workspace_path_is_realpath(tmp_path):
+    import os
+    ws = Workspace(str(tmp_path))
+    assert ws.path == os.path.realpath(str(tmp_path))

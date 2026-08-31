@@ -75,6 +75,10 @@ class Workspace:
         return self._data["name"]
 
     @property
+    def path(self) -> str:
+        return self._data["path"]
+
+    @property
     def last_session_id(self) -> str | None:
         return self._data.get("last_session_id")
 

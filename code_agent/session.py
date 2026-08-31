@@ -129,6 +129,15 @@ class SessionStore:
             f.write("\n".join(lines))
         os.replace(tmp, path)
 
+    def get_title(self, session_id: str) -> str:
+        path = self._path(self.root, session_id)
+        if not os.path.isfile(path):
+            return ""
+        meta = self._read_meta(path)
+        if meta is None:
+            return ""
+        return meta.get("title") or ""
+
     def rename(self, session_id: str, title: str) -> None:
         path = self._path(self.root, session_id)
         if not os.path.isfile(path):

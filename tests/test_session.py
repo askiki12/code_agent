@@ -142,3 +142,31 @@ def test_save_unpinned_updates_title(tmp_path):
     store.save(sid, [{"role": "user", "content": "b"}], title="t3")
     meta, _ = store.load(sid)
     assert meta["title"] == "t3"
+
+
+def test_get_title(tmp_path):
+    store = SessionStore(str(tmp_path))
+    sid = store.create("hello title")
+    assert store.get_title(sid) == "hello title"
+
+
+def test_get_title_after_rename(tmp_path):
+    store = SessionStore(str(tmp_path))
+    sid = store.create("t")
+    store.rename(sid, "renamed")
+    assert store.get_title(sid) == "renamed"
+
+
+def test_get_title_missing(tmp_path):
+    store = SessionStore(str(tmp_path))
+    assert store.get_title("code_agent-nope") == ""
+
+
+def test_get_title_corrupt_meta(tmp_path):
+    import os
+    store = SessionStore(str(tmp_path))
+    sid = "code_agent-bad"
+    os.makedirs(str(tmp_path), exist_ok=True)
+    with open(os.path.join(str(tmp_path), f"{sid}.jsonl"), "w", encoding="utf-8") as f:
+        f.write("garbage\n")
+    assert store.get_title(sid) == ""
