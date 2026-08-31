@@ -288,10 +288,10 @@ class AgentSession:
             result = self.policy.check(tc.name, tc.arguments, interact=self.interact, ask=self.ask)
             if result.decision == "deny":
                 return ToolResult(ok=False, output=f"permission denied: {result.reason or tc.name}")
-        msg = tool.validate(tc.arguments)
-        if msg:
-            return ToolResult(ok=False, output=msg)
         try:
+            msg = tool.validate(tc.arguments)
+            if msg:
+                return ToolResult(ok=False, output=msg)
             return tool.execute(tc.arguments, self.workdir)
         except Exception as e:  # noqa: BLE001 - last-resort guard
             return ToolResult(ok=False, output=f"tool crashed: {type(e).__name__}: {e}")

@@ -818,3 +818,27 @@ def test_run_tool_respects_validate(workdir):
     assert res.ok is False and res.output == "missing x"
     res2 = s._run_tool(ToolCall(id="c2", name="guarded", arguments={"x": 1}))
     assert res2.ok is True
+
+
+def test_run_tool_validate_raise_guarded(workdir):
+    from code_agent.llm import ToolCall
+    from code_agent.tools import Tool, ToolResult
+
+    class _Boom(Tool):
+        name = "boom"
+        description = ""
+        parameters = {}
+        required = []
+
+        def validate(self, args):
+            raise RuntimeError("validate broke")
+
+        def execute(self, args, workdir):
+            return ToolResult(ok=True, output="ok")
+
+    s = AgentSession(workdir=workdir, llm=object())
+    s._registry.register(_Boom())
+    res = s._run_tool(ToolCall(id="c1", name="boom", arguments={}))
+    assert res.ok is False
+    assert "tool crashed" in res.output
+    assert "validate broke" in res.output
