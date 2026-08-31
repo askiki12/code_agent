@@ -216,6 +216,8 @@ class CodeAgentApp(App):
         self._refresh_status("idle")
 
     def _start_task(self, task: str) -> None:
+        if self._rename_active:
+            self.action_cancel_rename()
         log = self.query_one("#log", ConversationLog)
         log.append(format_user(task))
         self._refresh_status("running")
@@ -322,6 +324,8 @@ class CodeAgentApp(App):
         if self._busy():
             self.notify("agent 正在运行中，请稍候", severity="warning")
             return
+        if self._rename_active:
+            self.action_cancel_rename()
         self.session.new_session()
         log = self.query_one("#log", ConversationLog)
         log.clear()
@@ -367,6 +371,8 @@ class CodeAgentApp(App):
         if self._busy():
             self.notify("agent 正在运行中，请稍候", severity="warning")
             return
+        if self._rename_active:
+            self.action_cancel_rename()
         sid = event.option.id
         if not sid:
             return

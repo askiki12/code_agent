@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from code_agent.agent import MAX_CONSECUTIVE_FAILURES, AgentSession
-from code_agent.llm import LLMError, LLMResponse, ToolCall
+from code_agent.llm import LLMError, LLMResponse, ToolCall, Usage
 
 
 class FakeLLM:
@@ -537,9 +537,6 @@ def test_agent_on_assistant_and_tool_start_callbacks(workdir):
     assert result.finished and result.final_text == "done"
     assert len(starts) == 2
     assert tool_starts == [("read_file", {"path": "a.txt"})]
-
-
-from code_agent.llm import LLMResponse, Usage
 
 
 def test_context_window_budget_64k(workdir):

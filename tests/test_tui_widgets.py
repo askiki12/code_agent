@@ -107,7 +107,16 @@ def test_skill_list_refresh(tmp_path):
 
 
 from code_agent.llm import Usage
-from code_agent.tui.widgets import _usage_segments, StatusBar
+from code_agent.tui.widgets import _fmt_k, _usage_segments, StatusBar
+
+
+def test_fmt_k():
+    assert _fmt_k(999) == "999"
+    assert _fmt_k(1000) == "1k"
+    assert _fmt_k(90000) == "90k"
+    assert _fmt_k(12340) == "12.3k"
+    assert _fmt_k(1_000_000) == "1M"
+    assert _fmt_k(1_500_000) == "1.5M"
 
 
 def test_usage_segments_full():

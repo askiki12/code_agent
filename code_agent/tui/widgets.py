@@ -14,6 +14,11 @@ from rich.text import Text
 def _fmt_k(n: int) -> str:
     if n < 1000:
         return str(n)
+    if n >= 1_000_000:
+        s = f"{n / 1_000_000:.1f}"
+        if s.endswith(".0"):
+            s = s[:-2]
+        return s + "M"
     s = f"{n / 1000:.1f}"
     if s.endswith(".0"):
         s = s[:-2]
@@ -67,7 +72,7 @@ class StatusBar(Widget):
             parts.append(cache)
         head = " | ".join(parts)
         if len(head) > _status_width():
-            ctx_c, _cache_c = _usage_segments(usage, context_window, compact=True)
+            ctx_c, _ = _usage_segments(usage, context_window, compact=True)
             parts = [p for p in parts if not (p.startswith("ctx ") or p.startswith("cache "))]
             if ctx_c:
                 parts.append(ctx_c)

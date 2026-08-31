@@ -77,16 +77,17 @@ class SessionStore:
         existing = self._read_meta(path) if os.path.isfile(path) else None
         now = datetime.now().isoformat(timespec="microseconds")
         created_at = existing["created_at"] if existing else now
+        pinned = existing is not None and existing.get("title_pinned")
         if existing is None:
             os.makedirs(self.root, exist_ok=True)
-        if existing is not None and existing.get("title_pinned"):
+        if pinned:
             resolved_title = existing.get("title") or ""
         elif title is not None:
             resolved_title = title
         else:
             resolved_title = (existing.get("title") or "") if existing else ""
         meta = _meta_dict(session_id, resolved_title, created_at, now, len(messages))
-        if existing is not None and existing.get("title_pinned"):
+        if pinned:
             meta["title_pinned"] = True
         self._write(path, [meta] + list(messages))
 

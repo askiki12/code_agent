@@ -89,7 +89,7 @@ agent.run_task
 ```
 
 - `run_task` 新增 `on_stats(usage)` 回调（每回合 LLM 调用后触发）。
-- 子智能体不接 stats 回调：其消耗计入父级该回合，不单独展示（父级回合 prompt_tokens 已含子会话消息）。
+- 子智能体不接 on_stats 回调，其 usage 不纳入父级回合统计（subagent 的 chat 在独立会话运行）。
 - 启发式回退时 `last_usage.heuristic=True`。
 
 ### 6.1 StatusBar 展示格式

@@ -1,5 +1,6 @@
 import asyncio
 import time
+import types
 from pathlib import Path
 
 import pytest
@@ -494,10 +495,67 @@ def test_app_rename_esc_cancels(workdir, tmp_path):
     asyncio.run(scenario())
 
 
+def test_app_rename_disarmed_on_new_session(workdir, tmp_path):
+    store = SessionStore(str(tmp_path / "sessions"))
+    session = AgentSession(workdir=workdir, llm=_FakeLLM(), max_iterations=3, store=store)
+    app = CodeAgentApp(session, store, None, model="test")
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            inp = app.query_one("#input")
+            await pilot.press("ctrl+r")
+            assert inp._rename_mode is True
+            await pilot.press("ctrl+n")  # 切换新会话应复位 rename 模式
+            assert inp._rename_mode is False
+            inp.value = "改名"
+            await pilot.press("enter")
+            for _ in range(50):
+                log = app.query_one("#log")
+                if "答复内容" in "".join(l.plain for l in log._lines):
+                    break
+                await asyncio.sleep(0.02)
+            text = "".join(l.plain for l in app.query_one("#log")._lines)
+            assert "> user: 改名" in text  # 作为普通任务执行，而非创建/重命名会话
+            assert "答复内容" in text
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
+
+
+def test_app_rename_disarmed_on_session_select(workdir, tmp_path):
+    store = SessionStore(str(tmp_path / "sessions"))
+    sid = store.create("旧标题")
+    store.rename(sid, "旧标题")  # 固定标题，避免任务持久化自动改标题干扰断言
+    session = AgentSession(workdir=workdir, llm=_FakeLLM(), max_iterations=3, store=store)
+    app = CodeAgentApp(session, store, None, model="test")
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            inp = app.query_one("#input")
+            await pilot.press("ctrl+r")
+            assert inp._rename_mode is True
+            app.on_option_list_option_selected(
+                types.SimpleNamespace(option=types.SimpleNamespace(id=sid))
+            )
+            assert inp._rename_mode is False  # 选中会话应复位 rename 模式
+            assert session.session_id == sid
+            inp.value = "覆盖标题"
+            await pilot.press("enter")
+            for _ in range(50):
+                log = app.query_one("#log")
+                if "答复内容" in "".join(l.plain for l in log._lines):
+                    break
+                await asyncio.sleep(0.02)
+            meta, _ = store.load(sid)
+            assert meta["title"] == "旧标题"  # 已加载会话的标题未被 rename 覆盖
+            await pilot.press("ctrl+q")
+
+    asyncio.run(scenario())
+
+
 def test_app_on_stats_updates_status(workdir, tmp_path):
     from code_agent.llm import Usage
     from code_agent.tui.widgets import StatusBar
-    from code_agent.tui.worker import AgentWorker
 
     class _LLM:
         def chat(self, messages, tools=None, on_delta=None):
