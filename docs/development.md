@@ -56,36 +56,37 @@ uv run python -m code_agent --interactive
 
 - `--prompt <task>`：一次性任务。
 - `-i` / `--interactive`：交互式模式（同一会话保持上下文）。TTY 下自动进入 **Textual 全屏 TUI**；`NO_TUI=1` 或非 TTY 回退纯文本 `input()` 循环。
-- TUI 行为：顶部状态栏（工作区 / model / session / 运行状态）、中部可滚动对话区（滚轮 / PageUp / PageDown，流式增量更新，近底自动跟随、向上可回看）、右侧会话列表面板（Ctrl+L 切换，选项点击恢复会话）、底部输入栏；快捷键 Ctrl+Q（退出）/ Ctrl+N（新建会话）/ Ctrl+L（会话列表）/ Ctrl+S（技能选择弹窗，↑↓ 选择 Enter 使用 Esc 退出）；运行中任务在后台线程执行（UI 始终响应）；`!cmd` 直接执行终端命令（输入以 `!` 开头输入框切换 command-mode 变 warning 色、占位符变 `❯ shell: 输入命令（回车执行）`，用户主动命令不走权限 policy，后台线程运行、120s 超时、busy 互斥，结果回显到对话区）；skill 加载标注 `[skill] 加载 <name>… / ✓ / ✗`；子智能体运行标注 `[subagent] 子智能体运行中… / ✓ 完成`；工具行与 `[agent] stopped`/`[session ...]` 行色彩分层；权限 ask 在输入栏就地确认（y/N）。
+- TUI 行为：顶部状态栏（工作区 / model / session / 运行状态 + ctx 占用/预算占比/cache 命中率，真实 usage 优先、启发式 `~` 前缀、窄宽降级紧凑）、中部可滚动对话区（滚轮 / PageUp / PageDown，流式增量更新，近底自动跟随、向上可回看）、右侧会话列表面板（Ctrl+L 切换，选项点击恢复会话）、底部输入栏；快捷键 Ctrl+Q（退出）/ Ctrl+N（新建会话）/ Ctrl+L（会话列表）/ Ctrl+S（技能选择弹窗，↑↓ 选择 Enter 使用 Esc 退出）/ Ctrl+R（重命名会话：输入新会话名回车确认，Esc 取消）；运行中任务在后台线程执行（UI 始终响应）；`!cmd` 直接执行终端命令（输入以 `!` 开头输入框切换 command-mode 变 warning 色、占位符变 `❯ shell: 输入命令（回车执行）`，用户主动命令不走权限 policy，后台线程运行、120s 超时、busy 互斥，结果回显到对话区）；skill 加载标注 `[skill] 加载 <name>… / ✓ / ✗`；子智能体运行标注 `[subagent] 子智能体运行中… / ✓ 完成`；工具行与 `[agent] stopped`/`[session ...]` 行色彩分层；权限 ask 在输入栏就地确认（y/N）。
 - `--workdir <dir>`：agent 工作目录（默认当前目录）。
 - `--model <model>` / `--base-url <url>` / `--api-key <key>`：覆盖环境变量 / `.env`。
 - `--max-iterations <n>`：最大循环轮次（默认 20）。
-- `--max-context-tokens <n>`：上下文 token 预算（默认 90000）。
+- `--max-context-tokens <n>`：上下文 token 预算 CLI 值（默认 90000；实际预算 B = min(此值, 70% × 上下文窗口 W)）。
+- `--context-window <n>`：模型上下文窗口 W（默认自动解析：/models `context_length` → 模型名查表 → 1M）。
 - `--debug`：输出详细日志。
 - `--list-sessions`：列出 `<workdir>/.code_agent/sessions/` 下的会话（id/标题/消息数/更新时间）。
 - `--resume <id>`：恢复指定会话（可与 `--prompt`/`--interactive` 组合）。
 - `--allow <tool:pattern>` / `--deny <tool:pattern>` / `--ask <tool:pattern>`：权限规则（可重复），如 `--deny "run_command:pytest *"`。
 - 三态：deny 拒绝 → ask 询问（交互模式 y/N，一次性任务直接拒绝）→ allow 放行；内置只读命令白名单（ls/cat/git status 等）为预留快路径，仅在默认策略收紧时才有意义（当前默认放行使其惰性，`--deny`/`--ask` 显式规则优先于白名单）。
 - 连续相同工具调用达 3 次自动拒绝（doom_loop），防止模型重复卡死。
-- 交互模式斜杠命令：`/new`（新建）、`/list`（列出）、`/resume <id>`（恢复）、`/exit`（退出）。
+- 交互模式斜杠命令：`/new`（新建）、`/list`（列出）、`/resume <id>`（恢复）、`/rename <title>`（重命名并 pin 固定标题）、`/exit`（退出）。
 - 技能（skill）：从 `<workdir>/.code_agent/skills/<name>/SKILL.md`（项目级）与 `~/.code_agent/skills/<name>/SKILL.md`（用户级，同名项目优先）扫描。
   SKILL.md 格式：`---` frontmatter（`name` / `description`）+ markdown 正文；agent 通过 `use_skill` 工具按需加载并遵循执行。
 
 ## 3. 测试
 
 - 框架：`pytest`（经 `uv run`）。
-- 目录：`tests/`（当前 273 个用例，全部离线，无需 API key）。
+- 目录：`tests/`（当前 308 个用例，全部离线，无需 API key）。
   - `test_smoke.py`：包可导入、版本号。
   - `test_tools.py`：九个工具的本地执行用例（含 glob/grep）。
-  - `test_llm_parse.py`：tool_calls 响应解析（含异常格式）。
+  - `test_llm_parse.py`：tool_calls 响应解析（含异常格式）、usage 解析（include_usage 兜底回退）、`resolve_context_window`（/models/查表/默认）。
   - `test_context.py`：消息维护、token 估算、裁剪后结构一致性。
-  - `test_agent.py`：用 mock 模型跑通完整循环（含终止条件与错误恢复、dispatch_subagent 子智能体派遣/阉割双层强制/权限继承用例，不含真实 API）。
-  - `test_cli.py`：`.env` 加载、缺 key 报错、一次性任务入口。
+  - `test_agent.py`：用 mock 模型跑通完整循环（含终止条件与错误恢复、dispatch_subagent 子智能体派遣/阉割双层强制/权限继承、上下文预算 B、on_stats 真实/启发式 usage、rename_session，不含真实 API）。
+  - `test_cli.py`：`.env` 加载、缺 key 报错、一次性任务入口、`--context-window` 传递、`/rename` 命令。
   - `test_tui.py`：format_*/_append_tool_line/_line_style 纯函数、run_tui 冒烟桩（StubConsole/StubLive 离线跑通 on_delta/on_tool 回调）。
-  - `test_tui_widgets.py`：ConversationLog/SessionList/SkillList/PromptInput 控件（append/update/clear、行配色 `_line_style`、会话列表刷新、技能列表刷新、`!` 命令模式类与占位符切换）。
-  - `test_tui_worker.py`：AgentWorker 后台线程与 call_from_thread 桥（流式 on_delta/on_tool + on_done，桥接 on_assistant_start/on_tool_start 新回调，离线 mock 模型）。
-  - `test_tui_app.py`：CodeAgentApp 应用（多轮任务渲染 user/assistant 行与回合顺序、Ctrl+N 新建会话清空对话、`!cmd` 命令执行与超时、`[subagent]` 运行标注、skill 加载标注 `[skill] 加载/✓/✗`、Ctrl+S 技能弹窗选中派发技能任务、Ctrl+P `show=False` 隐藏、命令面板禁用，离线 mock 模型）。
-  - `test_session.py`：SessionStore 创建/保存/加载/列表/坏文件容错。
+  - `test_tui_widgets.py`：ConversationLog/SessionList/SkillList/PromptInput 控件（append/update/clear、行配色 `_line_style`、会话列表刷新、技能列表刷新、`!` 命令模式类与占位符切换）、`_usage_segments`/StatusBar ctx-cache 渲染（启发式 `~`、紧凑/窄宽降级）、PromptInput rename 模式。
+  - `test_tui_worker.py`：AgentWorker 后台线程与 call_from_thread 桥（流式 on_delta/on_tool + on_done，桥接 on_assistant_start/on_tool_start/on_stats 新回调，离线 mock 模型）。
+  - `test_tui_app.py`：CodeAgentApp 应用（多轮任务渲染 user/assistant 行与回合顺序、Ctrl+N 新建会话清空对话、`!cmd` 命令执行与超时、`[subagent]` 运行标注、skill 加载标注 `[skill] 加载/✓/✗`、Ctrl+S 技能弹窗选中派发技能任务、Ctrl+P `show=False` 隐藏、命令面板禁用、Ctrl+R 重命名与 Esc 取消、on_stats 更新状态栏，离线 mock 模型）。
+  - `test_session.py`：SessionStore 创建/保存/加载/列表/坏文件容错、rename 与标题 pin（pin 不被后续保存覆盖）。
   - `test_workspace.py`：工作区初始化/幂等/损坏容错/touch_session。
   - `test_permissions.py`：规则解析/三态/只读白名单/doom_loop/交互询问。
   - `test_skills.py`：技能扫描/合并/覆盖/frontmatter 解析/加载。

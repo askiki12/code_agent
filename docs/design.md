@@ -64,7 +64,7 @@ v0.1.0 已实现范围：
 - [x] 错误处理：工具错误回传、API 重试（指数退避）、命令超时、解析异常恢复、LLM 错误优雅停止
 - [x] CLI：`--prompt` 一次性任务 + `--interactive` 对话模式，流式输出
 - [x] 搜索工具 glob/grep（纯标准库自实现，grep 带基础 gitignore）
-- [x] 测试：工具/解析/上下文单元测试 + mock 模型集成测试 + 真实 API 冒烟测试（273 用例全绿）
+- [x] 测试：工具/解析/上下文单元测试 + mock 模型集成测试 + 真实 API 冒烟测试（308 用例全绿）
 - [x] 会话持久化与多会话管理（JSONL 存储，--list-sessions/--resume，交互斜杠命令 /new /list /resume）
 - [x] 工作区一等公民（workspace.json 元数据，交互启动展示概况与上次会话续接提示）
 - [x] 权限模型（allow/ask/deny 三态 + 只读命令白名单 + doom_loop 重复检测，--allow/--deny/--ask）
@@ -76,6 +76,8 @@ v0.1.0 已实现范围：
 - [x] Textual TUI 重构（可滚动对话+会话列表+快捷键，ADR-020）
 - [x] TUI 打磨（多轮渲染修复、Ctrl+L 布局修复、子智能体运行标注、! 命令、移除命令面板，ADR-021）
 - [x] TUI 收尾（! 命令模式、Ctrl+P 隐藏、Ctrl+S 技能弹窗、skill 加载标注，ADR-022）
+- [x] TUI 可观测性：状态栏常驻 token 占用/预算占比/缓存命中率（真实 usage 优先，启发式回退）；上下文窗口自动解析（/models→查表→1M）+ 预算 B=min(CLI, 70%×W)
+- [x] 会话重命名：Ctrl+R / /rename，手动标题 pin 固定（不被自动标题覆盖）
 
 暂不实现（留作后续扩展，遵循 YAGNI）：
 
@@ -90,14 +92,14 @@ v0.1.0 已实现范围：
 - `context-management.md`：消息历史 / token 预算 / 裁剪策略
 - `development.md`：运行 / 测试 / 验证 / 演示流程
 
-## 8. 开发路线（进度截至 2026-08-30）
+## 8. 开发路线（进度截至 2026-08-31）
 
 1. [x] 搭建骨架：模块空壳 + CLI 入口 + 项目配置
 2. [x] 实现 `llm.py`：OpenAI 兼容封装 + tool_calls 解析
 3. [x] 实现 `tools.py`：五个工具的本地执行器
 4. [x] 实现 `context.py`：消息维护 + token 预算 + 裁剪
 5. [x] 实现 `agent.py`：循环、终止条件、错误恢复
-6. [x] 测试与冒烟：单元测试 → mock 集成测试 → 真实 API（已完成，273 用例 + 三次真实冒烟）
+6. [x] 测试与冒烟：单元测试 → mock 集成测试 → 真实 API（已完成，308 用例 + 三次真实冒烟）
 7. [x] 迭代增强：新增 glob/grep 搜索工具（ADR-011，设计见 docs/superpowers/specs/2026-08-29-glob-grep-design.md）
 8. [ ] 演示准备：README.txt + 演示任务 + 视频脚本（待办）
 9. [x] 迭代增强：会话持久化 + 多会话管理（ADR-012，设计见 docs/superpowers/specs/2026-08-29-session-persistence-design.md）
@@ -111,3 +113,5 @@ v0.1.0 已实现范围：
 17. [x] 迭代增强：Textual TUI 重构（ADR-020，设计见 docs/superpowers/specs/2026-08-30-tui-textual-design.md）
 18. [x] 迭代增强：TUI 打磨（ADR-021，设计见 docs/superpowers/specs/2026-08-30-tui-polish-design.md）
 19. [x] 迭代增强：TUI 收尾（ADR-022，设计见 docs/superpowers/specs/2026-08-30-tui-final-design.md）
+20. [x] 迭代增强：TUI 可观测性（状态栏 ctx 占用/预算占比/cache 命中率 + 上下文窗口自动解析/预算 B，ADR-023，设计见 docs/superpowers/specs/2026-08-31-observability-rename-design.md）
+21. [x] 迭代增强：会话重命名（Ctrl+R / /rename + 标题 pin 固定，ADR-023）

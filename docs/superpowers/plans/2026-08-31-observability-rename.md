@@ -101,6 +101,8 @@ Expected: 新用例报 `AttributeError: 'SessionStore' object has no attribute '
         else:
             resolved_title = (existing.get("title") or "") if existing else ""
         meta = _meta_dict(session_id, resolved_title, created_at, now, len(messages))
+        if existing is not None and existing.get("title_pinned"):
+            meta["title_pinned"] = True
         self._write(path, [meta] + list(messages))
 ```
 
