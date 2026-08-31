@@ -171,10 +171,10 @@ class ToolRegistry:
         tool = self.get(name)
         if tool is None:
             return ToolResult(ok=False, output=f"unknown tool: {name}")
-        msg = tool.validate(args)
-        if msg:
-            return ToolResult(ok=False, output=msg)
         try:
+            msg = tool.validate(args)
+            if msg:
+                return ToolResult(ok=False, output=msg)
             return tool.execute(args, workdir)
         except Exception as e:  # noqa: BLE001 - last-resort guard
             return ToolResult(ok=False, output=f"tool crashed: {type(e).__name__}: {e}")

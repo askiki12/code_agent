@@ -793,3 +793,28 @@ def test_run_tool_dispatch_disabled_message(workdir):
     tc = ToolCall(id="c1", name="dispatch_subagent", arguments={"task": "x"})
     res = s._run_tool(tc)
     assert res.ok is False and "subagent dispatch is disabled" in res.output
+
+
+def test_run_tool_respects_validate(workdir):
+    from code_agent.llm import ToolCall
+    from code_agent.tools import Tool
+
+    class _Guarded(Tool):
+        name = "guarded"
+        description = ""
+        parameters = {}
+        required = []
+
+        def validate(self, args):
+            return "missing x" if "x" not in args else None
+
+        def execute(self, args, workdir):
+            from code_agent.tools import ToolResult
+            return ToolResult(ok=True, output="ok")
+
+    s = AgentSession(workdir=workdir, llm=object())
+    s._registry.register(_Guarded())
+    res = s._run_tool(ToolCall(id="c1", name="guarded", arguments={}))
+    assert res.ok is False and res.output == "missing x"
+    res2 = s._run_tool(ToolCall(id="c2", name="guarded", arguments={"x": 1}))
+    assert res2.ok is True

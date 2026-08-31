@@ -521,8 +521,9 @@ def test_registry_schemas_filters_invisible():
 
 
 def test_registry_execute_unknown():
-    assert execute("nope", {}, "/tmp").ok is False
-    assert "unknown tool: nope" in execute("nope", {}, "/tmp").output
+    r = execute("nope", {}, "/tmp")
+    assert r.ok is False
+    assert "unknown tool: nope" in r.output
 
 
 def test_registry_execute_delegates_to_tool():
@@ -548,3 +549,23 @@ def test_registry_execute_validate_hook():
     assert reg.execute("guard", {}, "/tmp").ok is False
     assert reg.execute("guard", {}, "/tmp").output == "bad arg"
     assert reg.execute("guard", {"x": 1}, "/tmp").ok is True
+
+
+def test_registry_execute_validate_raise_guarded():
+    class _Boom(Tool):
+        name = "boom"
+        description = ""
+        parameters = {}
+        required = []
+
+        def validate(self, args):
+            raise RuntimeError("validate broke")
+
+        def execute(self, args, workdir):
+            return ToolResult(ok=True, output="ok")
+
+    reg = ToolRegistry([_Boom()])
+    res = reg.execute("boom", {}, "/tmp")
+    assert res.ok is False
+    assert "tool crashed" in res.output
+    assert "validate broke" in res.output
