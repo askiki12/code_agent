@@ -14,7 +14,7 @@
 - 测试全离线：真实 API key 一律不用；网络相关逻辑用注入的 `get_json` / monkeypatch。
 - 凭据不入库、不入文档、不入提交信息；提交前 `git grep -iE "sk-[a-zA-Z0-9]{10,}|api[_-]?key\s*[:=]\s*['\"]?[a-zA-Z0-9]{16,}"` 无命中。
 - 预算语义固定：`B = min(CLI --max-context-tokens, int(0.7 × W))`，W 为上下文窗口；`--max-context-tokens` 默认 90000。
-- 展示分母 = 预算 B；真实 usage 优先，缺失时启发式回退并加 `~` 前缀。
+- 展示分母 = 上下文窗口 W；真实 usage 优先，缺失时启发式回退并加 `~` 前缀。
 - 手动重命名后标题 pin 固定，不再被自动标题覆盖。
 - 无无关重构；本计划只改本 spec 覆盖的文件。
 
@@ -1307,7 +1307,7 @@ git commit -m "feat: TUI Ctrl+R 重命名 + on_stats 桥接状态栏（可观测
 
 - [ ] **Step 2: 更新 `code_agent/docs/context-management.md`**
 
-§4 预算段追加：`B = min(CLI --max-context-tokens, int(0.7 × W))`；W 由 `resolve_context_window`（/models → 模型名查表 → 默认 1M）解析，CLI `--context-window` 可覆盖；状态栏以 B 为分母展示最近回合 prompt_tokens 与缓存命中率（真实 usage 优先，启发式回退加 `~`）。
+§4 预算段追加：`B = min(CLI --max-context-tokens, int(0.7 × W))`；W 由 `resolve_context_window`（/models → 模型名查表 → 默认 1M）解析，CLI `--context-window` 可覆盖；状态栏以上下文窗口 W 为分母展示最近回合 prompt_tokens 与缓存命中率（真实 usage 优先，启发式回退加 `~`）。
 
 - [ ] **Step 3: 更新 `code_agent/docs/development.md`**
 
@@ -1319,7 +1319,7 @@ git commit -m "feat: TUI Ctrl+R 重命名 + on_stats 桥接状态栏（可观测
 
 §6 功能范围勾选新增两项：
 ```
-- [x] TUI 可观测性：状态栏常驻 token 占用/预算占比/缓存命中率（真实 usage 优先，启发式回退）；上下文窗口自动解析（/models→查表→1M）+ 预算 B=min(CLI, 70%×W)
+- [x] TUI 可观测性：状态栏常驻 token 占用/窗口占比/缓存命中率（真实 usage 优先，启发式回退）；上下文窗口自动解析（/models→查表→1M）+ 预算 B=min(CLI, 70%×W)
 - [x] 会话重命名：Ctrl+R / /rename，手动标题 pin 固定（不被自动标题覆盖）
 ```
 §8 开发路线追加（20/21）对应两项。
@@ -1331,7 +1331,7 @@ git commit -m "feat: TUI Ctrl+R 重命名 + on_stats 桥接状态栏（可观测
 - **日期**：2026-08-31
 - **状态**：已实施
 - **背景**：TUI 无法感知上下文占用/缓存状态；会话标题无法手动命名（首个用户消息自动生成，每次保存覆盖）。
-- **决策**：①状态栏常驻 ctx 占用/预算占比/缓存命中率，数据真实 usage（`stream_options.include_usage`）优先、provider 不支持回退启发式（`~` 前缀），分母=预算 B；②上下文窗口 W 由 `resolve_context_window`（/models `context_length` → 模型名查表 → 默认 1M）解析，预算 B=min(CLI `--max-context-tokens`, 70%×W)，CLI `--context-window` 覆盖；③会话重命名 Ctrl+R + `/rename <title>`，meta 加 `title_pinned`，手动标题固定不再被自动标题覆盖；`LLMClient` 增加 `use_usage`，严格网关拒 `include_usage` 时去掉重试一次。
+- **决策**：①状态栏常驻 ctx 占用/窗口占比/缓存命中率，数据真实 usage（`stream_options.include_usage`）优先、provider 不支持回退启发式（`~` 前缀），分母=上下文窗口 W；②上下文窗口 W 由 `resolve_context_window`（/models `context_length` → 模型名查表 → 默认 1M）解析，预算 B=min(CLI `--max-context-tokens`, 70%×W)，CLI `--context-window` 覆盖；③会话重命名 Ctrl+R + `/rename <title>`，meta 加 `title_pinned`，手动标题固定不再被自动标题覆盖；`LLMClient` 增加 `use_usage`，严格网关拒 `include_usage` 时去掉重试一次。
 - **理由**：数据管道沿既有回调（方案 A）最小侵入；真实 usage 比启发式准确且能显示缓存命中；窗口自动解析防长任务被 API 拒；pin 避免手动命名被冲掉。
 - **影响**：llm/agent/session/cli/tui 五处改动；测试相应扩展（usage 解析、预算、pin、Ctrl+R、_usage_segments）。
 ```

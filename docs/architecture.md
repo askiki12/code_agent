@@ -44,7 +44,7 @@ loop:                                             │
   └────────────────────────────────────────────────┘
 ```
 
-每回合 chat 成功后 `on_stats(usage)` 回调（真实 usage 或启发式回退）→ TUI StatusBar 渲染 ctx 占用/预算占比/cache 命中率。
+每回合 chat 成功后 `on_stats(usage)` 回调（真实 usage 或启发式回退）→ TUI StatusBar 渲染 ctx 占用/窗口占比/cache 命中率。
 
 ## 3. 模块接口约定（与实际实现一致）
 
@@ -64,7 +64,7 @@ loop:                                             │
 - `_on_assistant_start`/`_on_delta`/`_on_done`：每回合 LLM 调用前新建 `assistant:` 行并重钉索引，流式增量就地刷新该行，回合结束用最终文本定型——修复多轮文本合并进第一行的问题。
 - `action_toggle_sessions`：切换会话列表面板后重渲染 body 并钳制滚动偏移（`scroll_to(y=min(...))`），修复滚动后布局重叠。
 - `AgentWorker(app, session, *, on_delta, on_tool, on_done, on_ask=None, on_ask_timeout=None, on_assistant_start=None, on_tool_start=None, on_stats=None)` — 后台线程执行 `session.run_task`（含 `_ask` 权限询问阻塞等待输入栏应答），所有 UI 更新经 `app.call_from_thread` 桥回主线程，保证 UI 始终响应；`on_assistant_start`/`on_tool_start` 经桥转发（分别对应每回合 / 每工具调用的运行态标注，`on_tool_start(name, arguments)` 携参）；`on_stats(usage)` 经桥转发每回合 usage（驱动状态栏 ctx/cache）。
-- `StatusBar / ConversationLog / SessionList / SkillList / PromptInput / SkillScreen` — 自定义控件：状态栏（工作区/model/session/运行态 + ctx 占用/预算占比/cache 命中率，真实 usage 优先、启发式 `~` 前缀、窄宽降级紧凑）、可滚动对话日志（滚轮/PageUp/PageDown，近底自动跟随可回看）、会话列表面板（Ctrl+L 切换）、技能列表面板（Ctrl+S 弹窗）、输入栏（含权限 ask 就地确认 + `!` 命令模式状态反馈 + rename 模式 `set_rename_mode`/`clear_rename_mode`）。
+- `StatusBar / ConversationLog / SessionList / SkillList / PromptInput / SkillScreen` — 自定义控件：状态栏（工作区/model/session/运行态 + ctx 占用/窗口占比/cache 命中率，真实 usage 优先、启发式 `~` 前缀、窄宽降级紧凑）、可滚动对话日志（滚轮/PageUp/PageDown，近底自动跟随可回看）、会话列表面板（Ctrl+L 切换）、技能列表面板（Ctrl+S 弹窗）、输入栏（含权限 ask 就地确认 + `!` 命令模式状态反馈 + rename 模式 `set_rename_mode`/`clear_rename_mode`）。
 
 ### llm.py
 - `Usage` dataclass：`prompt_tokens / completion_tokens=0 / total_tokens=0 / cached_tokens=0 / heuristic=False`；`parse_usage(data)` 解析流式末 chunk usage（无效或缺 prompt_tokens → None）。

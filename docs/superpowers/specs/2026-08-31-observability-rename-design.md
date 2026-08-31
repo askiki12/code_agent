@@ -98,7 +98,7 @@ agent.run_task
 … | ctx 12.4k/90k 14% cache 43% | ● idle
 ```
 
-- 分子 = 最近回合 `prompt_tokens`；分母 = **预算 B**（与裁剪行为一致，非 W）。
+- 分子 = 最近回合 `prompt_tokens`；分母 = **上下文窗口 W**（`context_window`）。
 - 展示条件与 cache 段：
   - usage 存在（真实）：`12.4k/90k 14%`；`cached_tokens>0` → 追加 `cache N%`；`cached_tokens==0` → 不显示 cache 段。
   - usage 为 None（启发式回退）：`~12.4k/90k 14%`，无 cache 段。

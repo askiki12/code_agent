@@ -76,7 +76,7 @@ v0.1.0 已实现范围：
 - [x] Textual TUI 重构（可滚动对话+会话列表+快捷键，ADR-020）
 - [x] TUI 打磨（多轮渲染修复、Ctrl+L 布局修复、子智能体运行标注、! 命令、移除命令面板，ADR-021）
 - [x] TUI 收尾（! 命令模式、Ctrl+P 隐藏、Ctrl+S 技能弹窗、skill 加载标注，ADR-022）
-- [x] TUI 可观测性：状态栏常驻 token 占用/预算占比/缓存命中率（真实 usage 优先，启发式回退）；上下文窗口自动解析（/models→查表→1M）+ 预算 B=min(CLI, 70%×W)
+- [x] TUI 可观测性：状态栏常驻 token 占用/窗口占比/缓存命中率（真实 usage 优先，启发式回退）；上下文窗口自动解析（/models→查表→1M）+ 预算 B=min(CLI, 70%×W)
 - [x] 会话重命名：Ctrl+R / /rename，手动标题 pin 固定（不被自动标题覆盖）
 
 暂不实现（留作后续扩展，遵循 YAGNI）：
@@ -113,5 +113,5 @@ v0.1.0 已实现范围：
 17. [x] 迭代增强：Textual TUI 重构（ADR-020，设计见 docs/superpowers/specs/2026-08-30-tui-textual-design.md）
 18. [x] 迭代增强：TUI 打磨（ADR-021，设计见 docs/superpowers/specs/2026-08-30-tui-polish-design.md）
 19. [x] 迭代增强：TUI 收尾（ADR-022，设计见 docs/superpowers/specs/2026-08-30-tui-final-design.md）
-20. [x] 迭代增强：TUI 可观测性（状态栏 ctx 占用/预算占比/cache 命中率 + 上下文窗口自动解析/预算 B，ADR-023，设计见 docs/superpowers/specs/2026-08-31-observability-rename-design.md）
+20. [x] 迭代增强：TUI 可观测性（状态栏 ctx 占用/窗口占比/cache 命中率 + 上下文窗口自动解析/预算 B，ADR-023，设计见 docs/superpowers/specs/2026-08-31-observability-rename-design.md）
 21. [x] 迭代增强：会话重命名（Ctrl+R / /rename + 标题 pin 固定，ADR-023）

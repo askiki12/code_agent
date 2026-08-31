@@ -28,7 +28,7 @@
 
 - 配置 `max_context_tokens`（默认 90000；实际预算 **B = min(CLI `--max-context-tokens`, int(0.7 × W))**，W 为上下文窗口，如 128K 窗口 → 70% ≈ 90K）。
 - 上下文窗口 W 由 `resolve_context_window` 解析：/models `context_length` → 模型名查表 → 默认 1M（永不抛）；CLI `--context-window <n>` 可覆盖。
-- TUI 状态栏以 B 为分母展示最近回合 `prompt_tokens` 占用（占比）与缓存命中率：真实 usage 优先，缺失时启发式回退并加 `~` 前缀。
+- TUI 状态栏以上下文窗口 W 为分母展示最近回合 `prompt_tokens` 占用（占比）与缓存命中率：真实 usage 优先，缺失时启发式回退并加 `~` 前缀。
 - 每次 `build_messages()` 时估算总量；若超限，按以下顺序裁剪：
   1. **始终保留**：`system` + 最近 N 轮完整往返（确保最新决策上下文完整）；
   2. 裁剪中间轮次：从最老的非 system 消息开始丢弃（成对丢弃 assistant+tool，保持结构完整）；
