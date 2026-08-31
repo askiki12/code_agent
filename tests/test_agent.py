@@ -668,3 +668,95 @@ def test_current_title_without_store(tmp_path):
     from code_agent.agent import AgentSession
     s = AgentSession(workdir=str(tmp_path), llm=object())
     assert s.current_title() == ""
+
+
+def test_run_task_tools_from_registry(workdir, tmp_path):
+    from code_agent.llm import ToolCall
+    from code_agent.skills import SkillRegistry
+    import os as _os
+
+    d = _os.path.join(str(tmp_path / "proj"), ".code_agent", "skills", "greeting")
+    _os.makedirs(d, exist_ok=True)
+    with open(_os.path.join(d, "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write("---\nname: greeting\ndescription: say hi\n---\nhello\n")
+    reg = SkillRegistry(str(tmp_path / "proj"), str(tmp_path / "user"))
+
+    class _LLM:
+        def __init__(self):
+            self.tools = None
+
+        def chat(self, messages, tools=None, on_delta=None):
+            self.tools = tools
+            return LLMResponse(content="done", tool_calls=[])
+
+    llm = _LLM()
+    s = AgentSession(workdir=workdir, llm=llm, skills=reg)
+    s.run_task("task")
+    names = {t["function"]["name"] for t in llm.tools}
+    assert "read_file" in names
+    assert "use_skill" in names
+    assert "dispatch_subagent" in names
+
+
+def test_run_task_hides_conditional_schemas(workdir):
+    class _LLM:
+        def __init__(self):
+            self.tools = None
+
+        def chat(self, messages, tools=None, on_delta=None):
+            self.tools = tools
+            return LLMResponse(content="done", tool_calls=[])
+
+    llm = _LLM()
+    s = AgentSession(workdir=workdir, llm=llm, allow_subagent=False)
+    s.run_task("task")
+    names = {t["function"]["name"] for t in llm.tools}
+    assert "use_skill" not in names
+    assert "dispatch_subagent" not in names
+
+
+def test_run_tool_unknown(workdir):
+    from code_agent.llm import ToolCall
+
+    class _LLM:
+        def __init__(self):
+            self.n = 0
+
+        def chat(self, messages, tools=None, on_delta=None):
+            self.n += 1
+            if self.n == 1:
+                return LLMResponse(content="", tool_calls=[ToolCall(id="c1", name="nonexistent", arguments={})])
+            return LLMResponse(content="done", tool_calls=[])
+
+    s = AgentSession(workdir=workdir, llm=_LLM(), max_iterations=2)
+    s.run_task("task")
+    assert any(
+        m["role"] == "tool" and "unknown tool: nonexistent" in str(m.get("content", ""))
+        for m in s.conversation.messages
+    )
+
+
+def test_run_tool_bypass_policy(workdir):
+    from code_agent.llm import ToolCall
+    from code_agent.permissions import Policy
+
+    class _LLM:
+        def chat(self, messages, tools=None, on_delta=None):
+            return LLMResponse(content="done", tool_calls=[])
+
+    policy = Policy(deny=["dispatch_subagent:*", "run_command:*"])
+    s = AgentSession(workdir=workdir, llm=_LLM(), policy=policy)
+    tc = ToolCall(id="c1", name="dispatch_subagent", arguments={"task": "hi"})
+    res = s._run_tool(tc)
+    assert res.ok is True  # 编排工具绕过 deny
+    tc2 = ToolCall(id="c2", name="run_command", arguments={"command": "ls"})
+    res2 = s._run_tool(tc2)
+    assert res2.ok is False and "permission denied" in res2.output
+
+
+def test_run_tool_dispatch_disabled_message(workdir):
+    from code_agent.llm import ToolCall
+    s = AgentSession(workdir=workdir, llm=object(), allow_subagent=False)
+    tc = ToolCall(id="c1", name="dispatch_subagent", arguments={"task": "x"})
+    res = s._run_tool(tc)
+    assert res.ok is False and "subagent dispatch is disabled" in res.output

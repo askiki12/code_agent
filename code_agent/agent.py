@@ -11,7 +11,7 @@ from code_agent.llm import LLMError, Usage
 from code_agent.permissions import Policy
 from code_agent.session import SessionStore, _make_title
 from code_agent.skills import SkillRegistry
-from code_agent.tools import TOOL_SCHEMAS, ToolResult, execute, truncate
+from code_agent.tools import BASE_TOOLS, Tool, ToolRegistry, ToolResult, truncate
 from code_agent.workspace import Workspace
 
 SYSTEM_PROMPT = """You are a coding agent. You work inside a local workspace and complete software tasks autonomously.
@@ -47,31 +47,39 @@ SUBAGENT_PROMPT_EXTRA = (
     "did and found. You cannot delegate to sub-subagents."
 )
 
-_DISPATCH_SUBAGENT_SCHEMA = {
-    "type": "function",
-    "function": {
-        "name": "dispatch_subagent",
-        "description": "Delegate a sub-task to a subagent that runs its own agent loop with all tools except subagent dispatch. Returns the subagent's final report.",
-        "parameters": {
-            "type": "object",
-            "properties": {"task": {"type": "string", "description": "Sub-task description"}},
-            "required": ["task"],
-        },
-    },
-}
+class UseSkillTool(Tool):
+    name = "use_skill"
+    description = "Load a skill's instructions into context. Returns the skill content; follow it."
+    parameters = {"name": {"type": "string", "description": "Skill name"}}
+    required = ["name"]
+    bypass_policy = True
 
-_USE_SKILL_SCHEMA = {
-    "type": "function",
-    "function": {
-        "name": "use_skill",
-        "description": "Load a skill's instructions into context. Returns the skill content; follow it.",
-        "parameters": {
-            "type": "object",
-            "properties": {"name": {"type": "string", "description": "Skill name"}},
-            "required": ["name"],
-        },
-    },
-}
+    def __init__(self, session, *, visible: bool) -> None:
+        super().__init__()
+        self._session = session
+        self.visible = visible
+
+    def execute(self, args: dict, workdir: str) -> ToolResult:
+        return self._session._use_skill(args)
+
+
+class DispatchSubagentTool(Tool):
+    name = "dispatch_subagent"
+    description = ("Delegate a sub-task to a subagent that runs its own agent loop with all tools "
+                  "except subagent dispatch. Returns the subagent's final report.")
+    parameters = {"task": {"type": "string", "description": "Sub-task description"}}
+    required = ["task"]
+    bypass_policy = True
+
+    def __init__(self, session, *, visible: bool) -> None:
+        super().__init__()
+        self._session = session
+        self.visible = visible
+
+    def execute(self, args: dict, workdir: str) -> ToolResult:
+        if not self._session.allow_subagent:
+            return ToolResult(ok=False, output="subagent dispatch is disabled for subagents")
+        return self._session._dispatch_subagent(args, on_delta=self._session._on_delta)
 
 
 @dataclass
@@ -120,6 +128,10 @@ class AgentSession:
         if context_window:
             self.max_context_tokens = min(max_context_tokens, int(0.7 * context_window))
         self._on_delta = None
+        tools = list(BASE_TOOLS)
+        tools.append(UseSkillTool(self, visible=self.skills is not None))
+        tools.append(DispatchSubagentTool(self, visible=self.allow_subagent))
+        self._registry = ToolRegistry(tools)
         skills_section = ""
         if skills is not None:
             entries = "\n".join(f"- {s.name}: {s.description}" for s in skills.scan())
@@ -160,9 +172,7 @@ class AgentSession:
                     print(f"[agent] iteration {iteration}")
                 messages = self.conversation.build_messages(self.max_context_tokens)
                 try:
-                    tools = TOOL_SCHEMAS + ([_USE_SKILL_SCHEMA] if self.skills is not None else [])
-                    if self.allow_subagent:
-                        tools = tools + [_DISPATCH_SUBAGENT_SCHEMA]
+                    tools = self._registry.schemas()
                     if on_assistant_start is not None:
                         on_assistant_start()
                     response = self.llm.chat(messages, tools=tools, on_delta=on_delta)
@@ -271,19 +281,15 @@ class AgentSession:
         )
 
     def _run_tool(self, tc) -> ToolResult:
-        if tc.name == "dispatch_subagent":
-            if not self.allow_subagent:
-                return ToolResult(ok=False, output="subagent dispatch is disabled for subagents")
-            return self._dispatch_subagent(tc.arguments, on_delta=self._on_delta)
-        if tc.name == "use_skill" and self.skills is not None:
-            return self._use_skill(tc.arguments)
-        if self.policy is not None:
+        tool = self._registry.get(tc.name)
+        if tool is None:
+            return ToolResult(ok=False, output=f"unknown tool: {tc.name}")
+        if not tool.bypass_policy and self.policy is not None:
             result = self.policy.check(tc.name, tc.arguments, interact=self.interact, ask=self.ask)
             if result.decision == "deny":
-                reason = result.reason or tc.name
-                return ToolResult(ok=False, output=f"permission denied: {reason}")
+                return ToolResult(ok=False, output=f"permission denied: {result.reason or tc.name}")
         try:
-            return execute(tc.name, tc.arguments, self.workdir)
+            return tool.execute(tc.arguments, self.workdir)
         except Exception as e:  # noqa: BLE001 - last-resort guard
             return ToolResult(ok=False, output=f"tool crash: {type(e).__name__}: {e}")
 
