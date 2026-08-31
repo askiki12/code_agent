@@ -4,7 +4,7 @@
 
 ## 1. 总则
 
-- 所有工具均为**本地执行**，不依赖任何服务端托管能力。当前模型可见工具按条件共 10~14 个（read_file / write_file / edit_file / list_dir / run_command / glob / grep / web_fetch / web_search / dispatch_subagent；配置 skills 时另加 use_skill；`memory=True` 时另加 remember / recall / create_skill，均按条件注入）。
+- 所有工具均为**本地执行**，不依赖任何服务端托管能力。当前模型可见工具按条件共 9~14 个（read_file / write_file / edit_file / list_dir / run_command / glob / grep / web_fetch / web_search / dispatch_subagent；配置 skills 时另加 use_skill；`memory=True` 时另加 remember / recall / create_skill，均按条件注入）。
 - 其中 9 个 stateless 工具的 schema 权威源为 `tools.py` 各 `Tool` 对象的属性（`name`/`description`/`parameters`/`required`）；`TOOL_SCHEMAS` 仍为派生导出（`[t.schema() for t in BASE_TOOLS]`）。`dispatch_subagent`/`use_skill` 为 agent.py 中的 session-bound `Tool` 子类（`DispatchSubagentTool`/`UseSkillTool`），`remember`/`recall`/`create_skill` 同为 agent.py 中的 session-bound `Tool` 子类（`RememberTool`/`RecallTool`/`CreateSkillTool`），其 schema 同样由对象属性派生。
 - 工具机制：`Tool` 基类（Command 模式：schema 声明 + `validate()` + `execute()`）+ `ToolRegistry`（`register`/`get`/`schemas`/`execute`）。**新增工具 = 实现一个 `Tool` 子类 + `register`**；`bypass_policy=True` 跳过权限检查，`visible=False` 不注入 schema。
 - 工具通过 OpenAI 原生 tool calling 接口暴露给模型。
@@ -139,7 +139,7 @@
   - `tags`（string，可选）：逗号分隔的标签。
 - 返回：`remembered: <记忆 id>`；空 content 返回 `ok=false`（`content is required`）。
 - 存储：`<workdir>/.code_agent/memory/memories.jsonl`（JSONL，字段 id/content/tags/source_session/created_at/updated_at/usage_count）。
-- 机制：记忆工具为 **session-bound** `Tool` 子类（agent.py 的 `RememberTool`），仅 `AgentSession(memory=True)` 时注册（`visible=True`，走 policy，不 bypass）；`memory=False` 时返回 `memory is disabled`。`.code_agent` 为受保护路径，模型不可经文件工具直写，只能走本工具（受保护路径由所有者直写）。
+- 机制：记忆工具为 **session-bound** `Tool` 子类（agent.py 的 `RememberTool`），仅 `AgentSession(memory=True)` 时注册（`visible=True`，走 policy，不 bypass）；`memory=False` 时记忆工具不注册（unknown tool）。`.code_agent` 为受保护路径，模型不可经文件工具直写，只能走本工具（受保护路径由所有者直写）。
 
 ### 3.12 recall
 - 用途：按关键词从项目记忆库召回相关历史知识（跨会话），供当前任务参考。
@@ -147,7 +147,7 @@
   - `query`（string，必填）：要搜索的内容。
   - `top_k`（int，可选，默认 3）：最多返回条数，clamp 1..10。
 - 返回：编号列表（`N. 内容`，含 tags）；无命中返回 `(no relevant memories)`；整体按输出长度上限截断并标记 `truncated`。
-- 机制：自实现关键词相关度打分（`_tokens` 拆词 + 词长加权，CJK 单字 + 英数字词），命中条目 bump `usage_count` 并落盘（热度影响排序，`-score, -usage_count`）；`memory=False` 时返回 `memory is disabled`。
+- 机制：自实现关键词相关度打分（`_tokens` 拆词 + 词长加权，CJK 单字 + 英数字词），命中条目 bump `usage_count` 并落盘（热度影响排序，`-score, -usage_count`）；`memory=False` 时记忆工具不注册（unknown tool）。
 - 与自动注入的关系：首任务到达时 agent 也会按任务相关性自动注入 top-K（≤3 条）system 记忆块（限量防爆上下文，见 context-management.md §9）；`recall` 是运行中的按需主动召回通道。
 
 ### 3.13 create_skill

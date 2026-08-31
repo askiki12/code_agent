@@ -72,7 +72,7 @@ class MemoryStore:
                     if not isinstance(tags, list):
                         tags = []
                     usage_count = obj.get("usage_count", 0)
-                    if not isinstance(usage_count, int):
+                    if type(usage_count) is not int:
                         usage_count = 0
                     self._entries.append(
                         MemoryEntry(

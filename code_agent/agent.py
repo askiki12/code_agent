@@ -228,7 +228,10 @@ class AgentSession:
         on_stats: Callable[[Usage], None] | None = None,
     ) -> RunResult:
         self.conversation.add_user(task)
-        self._inject_memory(task)
+        try:
+            self._inject_memory(task)
+        except Exception:  # noqa: BLE001 - memory injection must never break the loop
+            pass
         self._on_delta = on_delta
         result: RunResult | None = None
         try:
@@ -466,7 +469,7 @@ class AgentSession:
         if not query.strip():
             return ToolResult(ok=False, output="query is required")
         top_k = arguments.get("top_k", 3)
-        if not isinstance(top_k, int) or top_k < 1:
+        if type(top_k) is not int or top_k < 1:
             top_k = 3
         top_k = min(top_k, 10)
         entries = self._memory.recall(query, top_k=top_k)

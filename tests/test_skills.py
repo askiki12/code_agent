@@ -107,6 +107,19 @@ def test_skill_registry_add_invalid_name(tmp_path):
         reg.add("has space", "d", "c")
 
 
+def test_skill_registry_add_rejects_trailing_newline(tmp_path):
+    reg = SkillRegistry(str(tmp_path / "proj"), str(tmp_path / "user"))
+    with pytest.raises(ValueError):
+        reg.add("build\n", "d", "c")
+
+
+def test_skill_registry_add_empty_description_falls_back_to_name(tmp_path):
+    reg = SkillRegistry(str(tmp_path / "proj"), str(tmp_path / "user"))
+    reg.add("build", "   ", "content")
+    skills = reg.scan()
+    assert any(s.name == "build" and s.description == "build" for s in skills)
+
+
 def test_skill_registry_add_overwrites(tmp_path):
     reg = SkillRegistry(str(tmp_path / "proj"), str(tmp_path / "user"))
     reg.add("build", "v1", "old")

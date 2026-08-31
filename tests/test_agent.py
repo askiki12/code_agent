@@ -887,6 +887,37 @@ def test_remember_when_disabled(workdir):
     assert r.ok is False and "unknown tool" in r.output
 
 
+def test_inject_memory_failure_does_not_break_run(workdir, tmp_path, monkeypatch):
+    from code_agent.session import SessionStore
+
+    class _LLM:
+        def chat(self, messages, tools=None, on_delta=None):
+            return LLMResponse(content="done", tool_calls=[])
+
+    store = SessionStore(str(tmp_path / "sessions"))
+    s = AgentSession(workdir=workdir, llm=_LLM(), memory=True, store=store)
+    s._memory.add("uv environment")
+
+    def _boom():
+        raise OSError("disk full")
+
+    monkeypatch.setattr(s._memory, "_save", _boom)
+    res = s.run_task("uv task")
+    assert res.finished is True
+    assert s.session_id is not None
+
+
+def test_recall_top_k_bool_falls_back_to_default(workdir):
+    from code_agent.llm import ToolCall
+
+    s = AgentSession(workdir=workdir, llm=object(), memory=True)
+    for m in ["uv setup guide", "uv sync env", "uv run pytest", "extra uv note"]:
+        s._memory.add(m)
+    res = s._run_tool(ToolCall(id="c1", name="recall", arguments={"query": "uv", "top_k": True}))
+    assert res.ok is True
+    assert len(res.output.strip().splitlines()) == 3
+
+
 def test_memory_auto_inject(workdir):
     class _LLM:
         def chat(self, messages, tools=None, on_delta=None):
