@@ -6,14 +6,15 @@
 
 | 模块 | 职责 | 依赖 |
 |---|---|---|
-| `cli.py` | 命令行入口，解析参数，加载 `.env`，启动会话，打印流式输出 | agent, llm |
-| `agent.py` | 会话循环：组织往返、解析输出、执行工具、判定终止、错误恢复 | llm, tools, context |
+| `cli.py` | 命令行入口，解析参数，加载 `.env`，启动会话（构造 AgentSession 时 memory=True 开启项目记忆），打印流式输出 | agent, llm |
+| `agent.py` | 会话循环：组织往返、解析输出、执行工具、判定终止、错误恢复；项目记忆（remember/recall/create_skill 工具 + 首任务注入 + 成功自动沉淀） | llm, tools, context, memory |
 | `context.py` | 维护消息序列、token 估算、预算裁剪、tool 结果处理 | 无（纯逻辑） |
 | `tools.py` | 工具 Command+Registry：Tool 基类 + ToolRegistry + 9 个 Tool 子类（BASE_TOOLS）+ 本地执行器 + 结果格式化（含 glob/grep 搜索与 gitignore 过滤） | 无（纯逻辑，标准库） |
 | `session.py` | 会话持久化：SessionStore（JSONL 存储/列表/恢复） | 无（纯逻辑，标准库） |
 | `workspace.py` | 工作区身份与元数据：Workspace（workspace.json 幂等读写/触摸/展示） | 无（纯逻辑，标准库） |
+| `memory.py` | 项目记忆：MemoryStore（JSONL 持久化 + 关键词相关度打分检索，零新依赖） | 无（纯逻辑，标准库） |
 | `permissions.py` | 权限模型：Policy（allow/ask/deny 三态、只读白名单、doom_loop） | 无（纯逻辑，标准库） |
-| `skills.py` | 技能库：SkillRegistry（项目+用户级 SKILL.md 扫描/加载） | 无（纯逻辑，标准库） |
+| `skills.py` | 技能库：SkillRegistry（项目+用户级 SKILL.md 扫描/加载/add 程序化沉淀） | 无（纯逻辑，标准库） |
 | `llm.py` | OpenAI 兼容 API 调用（流式）、响应/工具调用解析、usage/上下文窗口解析、重试 | requests |
 | `web.py` | 网络检索：公网 URL 校验（SSRF）、HTML 文本提取、关键词搜索（DDG Lite）、唯一联网点 fetch/search（session 可注入） | requests |
 | `tui/` 包 | Textual 终端界面：app.py（CodeAgentApp 全屏应用）、widgets.py（StatusBar/StatusFooter/ConversationLog/SessionList/PromptInput）、worker.py（AgentWorker 后台线程 + call_from_thread 桥）；format_*/_line_style/_fmt_ctx/_footer_stats 纯函数；顶栏完整路径+会话名、底栏 stats、Ctrl+R 重命名 | textual, rich |
@@ -44,12 +45,16 @@ loop:                                             │
   └────────────────────────────────────────────────┘
 ```
 
+**项目记忆数据流（memory=True 时）：**
+- **首任务注入**：`run_task` 收到首个任务时，`_inject_memory` 按任务相关性从 `<workdir>/.code_agent/memory/memories.jsonl` `recall` 出 top-K（≤3 条）记忆，以 system 块注入对话（限量防爆上下文，仅首任务注入一次）；运行中模型可经 `recall` 工具按需主动召回更多。
+- **成功自动沉淀**：`run_task` 以 `finished=True`（正常完成）结束时，`_auto_memorize` 用一次 LLM 调用把本次会话的 1~3 条项目关键知识（facts/decisions/gotchas/关键文件位置）总结写入 `MemoryStore`（try/except 静默，绝不打断主循环）；技能沉淀仅由模型显式 `create_skill` 触发，不走自动沉淀。
+
 每回合 chat 成功后 `on_stats(usage)` 回调（真实 usage 或启发式回退）→ TUI StatusFooter 渲染底栏 stats（`_footer_stats`：`213.0k(21%) cache:40%`，启发式 `~`，分母=上下文窗口 W）；切会话/新建会话后 `_refresh_status` 按 `last_usage` 立即刷新底栏。
 
 ## 3. 模块接口约定（与实际实现一致）
 
 ### cli.py
-- `main(argv=None) -> int` — 命令行入口：`_load_dotenv()` → 解析参数 → 构造 Workspace/SessionStore/LLMClient/Policy/SkillRegistry/AgentSession → 分派（`--list-sessions` / `--prompt` / `--interactive`）；`--context-window <n>` 覆盖，否则经 `resolve_context_window` 自动解析，传 `context_window=window` 给 AgentSession。
+- `main(argv=None) -> int` — 命令行入口：`_load_dotenv()` → 解析参数 → 构造 Workspace/SessionStore/LLMClient/Policy/SkillRegistry/AgentSession（`memory=True` 开启项目记忆）→ 分派（`--list-sessions` / `--prompt` / `--interactive`）；`--context-window <n>` 覆盖，否则经 `resolve_context_window` 自动解析，传 `context_window=window` 给 AgentSession。
 - `handle_command(command, session, store) -> (keep: bool, out: list[str])` — 交互斜杠命令纯函数（`/new` `/list` `/resume` `/rename <title>` `/exit`），cli 与 tui 共用，便于测试。
 - `_use_tui() -> bool` — `stdout.isatty()` 且 `NO_TUI` 未设置；`--interactive` 时 TTY 进 TUI，非 TTY 或 `NO_TUI=1` 回退纯文本 input() 循环。
 - `_run(session, task)` — 一次性任务与纯文本交互共用的流式打印。
@@ -82,7 +87,7 @@ loop:                                             │
 - `BASE_TOOLS: list[Tool]` — 9 个 `Tool` 子类（read_file/list_dir/write_file/edit_file/run_command/glob/grep/web_fetch/web_search，固定顺序即 schema 顺序），各包装既有本地 handler。
 - `TOOL_SCHEMAS = [t.schema() for t in BASE_TOOLS]` 与顶层 `execute(name, args, workdir)` 由 `_DEFAULT_REGISTRY`（`ToolRegistry(list(BASE_TOOLS))`）派生保留，兼容旧调用方。
 - `ToolResult`：`{ok: bool, output: str, truncated: bool, exit_code?: int}` + `as_message()`。
-- 模型可见工具 10~11 个：上述 9 个 + `dispatch_subagent`，配置 skills 时另加 `use_skill`（均为 session-bound `Tool` 子类，见 agent.py，`visible` 条件控制 schema 注入）。
+- 模型可见工具按条件共 10~14 个：上述 9 个 + `dispatch_subagent`（=10）；配置 skills 时另加 `use_skill`（=11）；`memory=True` 时另加 `remember`/`recall`/`create_skill`（max=14）。均为 session-bound `Tool` 子类（见 agent.py，`visible` 条件控制 schema 注入）。
 - 所有输出为纯文本，便于回填给模型；超长自动截断（默认 8000 字符）；受保护路径（`.env*` 除 `.env.example`、`.git`）禁读禁写；写操作限定工作目录内。
 
 ### session.py
@@ -102,7 +107,7 @@ loop:                                             │
 
 ### skills.py
 - `SkillRegistry(project_dir, user_dir=None)` — 扫描 `<workdir>/.code_agent/skills/` 与 `~/.code_agent/skills/`（同名项目优先）。
-- `scan() -> list[Skill]`（按 name 排序）/ `load(name) -> str | None`（SKILL.md 全文）。
+- `scan() -> list[Skill]`（按 name 排序）/ `load(name) -> str | None`（SKILL.md 全文）/ `add(name, description, content) -> str`（程序化写项目级 SKILL.md，name 校验 `^[A-Za-z0-9_-]+$`，返回写入路径；供 `create_skill` 工具沉淀技能）。
 - SKILL.md frontmatter：`name` / `description`；缺失或非法跳过并警告。
 
 ### web.py
@@ -122,7 +127,7 @@ loop:                                             │
 - `estimate_tokens(text) -> int` — 启发式估算（CJK≈1 token，其它≈每 4 字符 1 token）。
 
 ### agent.py
-- `AgentSession(*, workdir, llm, max_iterations=20, max_context_tokens=90000, debug=False, store=None, session_id=None, resume=False, workspace=None, policy=None, interact=False, ask=None, skills=None, allow_subagent=True, context_window=None)` — `llm` 依赖注入，便于测试；`store`/`workspace`/`policy`/`interact`/`ask`/`skills` 均可选（无则不启用对应能力）。
+- `AgentSession(*, workdir, llm, max_iterations=20, max_context_tokens=90000, debug=False, store=None, session_id=None, resume=False, workspace=None, policy=None, interact=False, ask=None, skills=None, allow_subagent=True, context_window=None, memory=False)` — `llm` 依赖注入，便于测试；`store`/`workspace`/`policy`/`interact`/`ask`/`skills`/`memory` 均可选（无则不启用对应能力）。`memory=True` 时构造 `MemoryStore(<workdir>/.code_agent/memory/)`，并注册 `RememberTool`/`RecallTool`/`CreateSkillTool` 三个 session-bound 工具（`visible=True`，走 policy）。
 - `context_window` 属性（默认 1_000_000）；`max_context_tokens` = `min(CLI 值, int(0.7 × context_window))`（仅 context_window 提供时应用）；`last_usage: Usage | None` — 最近回合真实/启发式 usage。
 - `current_title() -> str` — 当前会话标题（经 `SessionStore.get_title`；无 store 或尚未创建会话返回空串，TUI 顶栏据此显示 `new`）。
 - `load_session(session_id)` — 恢复会话时用 `estimate_tokens` 对全部历史消息设**启发式** `last_usage`（切会话后 stats 立即刷新为该会话估算值）；`new_session()` — 新建会话时**清空** `last_usage`（防止残留上一会话 stats）。
@@ -130,8 +135,10 @@ loop:                                             │
 - `ask`（可选回调 `(prompt) -> str`）透传给 `Policy.check` 作权限询问实现，并透传给子会话（subagent）；缺省 `input()`。
 - `use_skill`/`dispatch_subagent` 为 **session-bound `Tool` 子类**：`UseSkillTool`/`DispatchSubagentTool`（持会话引用，`bypass_policy=True`）。`AgentSession.__init__` 把 9 个 stateless 工具 + 两者组装为 `ToolRegistry` 存 `self._registry`，按 `visible` 条件注册（`UseSkillTool` 的 `visible=skills is not None`，`DispatchSubagentTool` 的 `visible=allow_subagent`）；`run_task` 经 `self._registry.schemas()` 注入模型工具列表。
 - `dispatch_subagent` 工具参数仅 `task`；`UseSkillTool` 参数仅 `name`；`_use_skill` 有 `skills is None` 守卫（返回 `skills are not available`）。
+- 记忆工具（session-bound `Tool` 子类，`memory=True` 时注册）：`RememberTool`（`remember`：`content` + 可选 `tags`，写一条记忆，返回 `remembered: <id>`）/ `RecallTool`（`recall`：`query` + 可选 `top_k`（默认 3，clamp 1..10），关键词相关度打分召回，命中 bump usage_count 并落盘，无命中返回 `(no relevant memories)`）/ `CreateSkillTool`（`create_skill`：`name`/`description`/`content`，经 `SkillRegistry.add` 写项目级 SKILL.md 复用技能机制，name 非法返回 `invalid skill name`）。`memory=False` 时三者不注册，运行时返回 `memory is disabled`/`skills are not available`。
+- `_inject_memory(task)` — 首任务到达时按任务相关性 `recall(task, top_k=3)`，命中则追加 `[Project memory]` system 块（仅注入一次，`_memory_injected` 防重）；`_auto_memorize()` — 任务成功结束（`finished=True`）时用一次 LLM 调用从最近对话摘要提取 1~3 条知识写入记忆，`try/except` 静默绝不打断主循环；`_run_loop`/`_persist` — 主循环与持久化（session/workspace），`run_task` 的 `finally` 中 `_persist`，成功结束后 `_auto_memorize`。
 - `_run_tool(tc) -> ToolResult` — 统一分派：① `self._registry.get(name)`（unknown → `unknown tool: <name>`）；② `bypass_policy` 为 False 且配置 `policy` 时 `Policy.check`（deny → `permission denied`）；③ `tool.validate(args)`（返回非空 → 直接回传校验消息），随后 `tool.execute(args, workdir)`；validate/execute 均在 try 内，异常兜底为 `ToolResult(ok=False)`（`tool crashed`）。原对 use_skill/dispatch_subagent 的 if 特判已消除。
-- `_dispatch_subagent(arguments) -> ToolResult` — 构造子会话（继承 workdir/llm/policy/interact/skills，`max_iterations=SUBAGENT_MAX_ITERATIONS=10`，`allow_subagent=False`，不带 store/workspace 故不持久化）跑同步嵌套循环，只回传最终报告（空报告回传 status，按 8000 字符截断）。
+- `_dispatch_subagent(arguments) -> ToolResult` — 构造子会话（继承 workdir/llm/policy/interact/skills，`max_iterations=SUBAGENT_MAX_ITERATIONS=10`，`allow_subagent=False`，`memory=False`，不带 store/workspace 故不持久化）跑同步嵌套循环，只回传最终报告（空报告回传 status，按 8000 字符截断）。
 - 子智能体阉割派遣为双层强制、深度恒 1：① 子会话 `DispatchSubagentTool` 以 `visible=False` 注册，`_registry.schemas()` 不含其 schema（模型不可见、无法发起派遣）；② 即便模型尝试调用，`DispatchSubagentTool.execute` 运行时对 `allow_subagent=False` 会话返回 `ToolResult(ok=False)` 拒绝。
 - 权限继承：`policy`/`interact` 透传给子会话，`--deny`/`--ask` 规则对子智能体同样生效，防止绕过权限；子会话 system prompt 追加 `SUBAGENT_PROMPT_EXTRA`（subagent 指示）。
 - `run_task(task, on_delta=None, on_tool=None, on_assistant_start=None, on_tool_start=None, on_stats=None) -> RunResult` — 主循环；`on_delta` 流式增量展示；`on_assistant_start` 每回合 LLM 调用前回调（TUI 用于新建 assistant 行）；`on_tool_start(name, arguments)` 每工具调用前回调（携参，TUI 用于子智能体运行标注与 skill 加载标注）；`on_tool` 回调 `(name, ToolResult)` 逐工具调用；`on_stats(usage)` 每回合 chat 成功后回调（usage 缺失时启发式 `Usage(..., heuristic=True)`，并写 `last_usage`）；`RunResult` 含 `final_text/iterations/finished/reason`。

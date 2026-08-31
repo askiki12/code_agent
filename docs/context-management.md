@@ -56,3 +56,11 @@
 - 存储由 `session.SessionStore` 管理：`<workdir>/.code_agent/sessions/<id>.jsonl`，首行 meta。
 - `AgentSession` 每次 `run_task` 结束自动保存；`--resume <id>` / 交互 `/resume` 恢复会话（重新注入当前 system prompt）。
 - `.code_agent` 为受保护路径，工具层不可读写。
+
+## 9. 项目记忆自动注入（ADR-026）
+
+- 背景：agent 无跨会话记忆，长文档靠模型手动 grep/分段读，无检索增强；引入项目记忆库（`<workdir>/.code_agent/memory/memories.jsonl`，JSONL + 关键词打分，零新依赖）。
+- **首任务注入**：`AgentSession(memory=True)` 时，首个任务到达由 `_inject_memory` 按任务相关性 `recall(task, top_k=3)`，命中则追加 `[Project memory]` system 块（每会话仅注入一次，`_memory_injected` 防重）。**限量防爆上下文**：只注入 ≤3 条精简记忆，不注入全量。
+- **运行中按需召回**：模型在任务中可主动调 `recall` 工具按当前子问题召回更多记忆（`top_k` clamp 1..10，命中 bump usage_count 热度）。
+- **成功自动沉淀**：`run_task` 以 `finished=True` 结束时用一次 LLM 调用把本会话 1~3 条项目关键知识总结写入记忆（try/except 静默，不增加失败面）；技能沉淀仅由模型显式 `create_skill` 触发。
+- 与裁剪的关系：注入的 system 块与主 system 同属 `system` 角色，`build_messages` 裁剪时**始终保留** system，故注入记忆不参与裁剪（天然受"限量 ≤3 条"约束）。
