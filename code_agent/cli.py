@@ -6,7 +6,7 @@ import os
 import sys
 
 from code_agent.agent import AgentSession
-from code_agent.llm import LLMClient
+from code_agent.llm import LLMClient, resolve_context_window
 from code_agent.permissions import Policy
 from code_agent.session import SessionStore
 from code_agent.skills import SkillRegistry
@@ -55,6 +55,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", help="Model name (default: env CODE_AGENT_MODEL)")
     parser.add_argument("--max-iterations", type=int, default=20, help="Max agent iterations")
     parser.add_argument("--max-context-tokens", type=int, default=90000, help="Context budget in tokens")
+    parser.add_argument("--context-window", type=int, default=None,
+                        help="Model context window in tokens (default: auto-detect)")
     parser.add_argument("--debug", action="store_true", help="Print debug logs")
     return parser
 
@@ -100,6 +102,16 @@ def handle_command(command: str, session, store: SessionStore) -> tuple[bool, li
                 out.append(f"Resumed session {sid}.")
             except KeyError:
                 out.append(f"session not found: {sid}")
+    elif cmd == "/rename":
+        title = parts[1] if len(parts) > 1 else ""
+        if not title.strip():
+            out.append("usage: /rename <title>")
+        else:
+            try:
+                renamed = session.rename_session(title)
+                out.append(f"renamed: {renamed}")
+            except (KeyError, ValueError) as e:
+                out.append(f"rename failed: {e}")
     elif cmd == "/exit":
         return False, []
     else:
@@ -138,6 +150,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{s['id']}  {s['title'] or ''}  ({s['message_count']} msgs, {s['updated_at']})")
         return 0
     llm = _make_client(args)
+    if args.context_window:
+        window = args.context_window
+    else:
+        window = resolve_context_window(llm.model, llm.base_url, llm.api_key)
     policy = Policy(allow=args.allow, deny=args.deny, ask=args.ask)
     skills = SkillRegistry(workdir)
     try:
@@ -146,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:
             llm=llm,
             max_iterations=args.max_iterations,
             max_context_tokens=args.max_context_tokens,
+            context_window=window,
             debug=args.debug,
             store=store,
             session_id=args.resume,

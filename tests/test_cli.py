@@ -6,6 +6,11 @@ from code_agent.cli import _build_parser, _load_dotenv, _make_client, main
 from code_agent.agent import RunResult
 
 
+@pytest.fixture(autouse=True)
+def _no_context_window_resolve(monkeypatch):
+    monkeypatch.setattr("code_agent.cli.resolve_context_window", lambda *a, **k: 128000)
+
+
 def test_load_dotenv_sets_missing_keys(tmp_path, monkeypatch):
     env_file = tmp_path / ".env"
     env_file.write_text(
@@ -56,6 +61,7 @@ def test_parser_defaults():
     args = _build_parser().parse_args(["--prompt", "x"])
     assert args.max_iterations == 20
     assert args.max_context_tokens == 90000
+    assert args.context_window is None
     assert args.workdir == "."
 
 
@@ -308,3 +314,42 @@ def test_handle_command_resume(workdir, tmp_path):
     s = _S()
     keep, out = handle_command(f"/resume {sid}", s, store)
     assert keep is True and s.loaded == sid and out == [f"Resumed session {sid}."]
+
+
+def test_main_passes_context_window(monkeypatch, tmp_path):
+    monkeypatch.setenv("CODE_AGENT_API_KEY", "test-key")
+    captured = {}
+
+    class _CaptureSession:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def run_task(self, task, on_delta=None):
+            return RunResult(final_text="ok", iterations=1, finished=True, reason="complete")
+
+    monkeypatch.setattr("code_agent.cli.AgentSession", _CaptureSession)
+    rc = main(["--prompt", "x", "--workdir", str(tmp_path), "--context-window", "64000"])
+    assert rc == 0
+    assert captured.get("context_window") == 64000
+
+
+def test_handle_command_rename(workdir, tmp_path):
+    from code_agent.cli import handle_command
+    from code_agent.session import SessionStore
+    store = SessionStore(str(tmp_path / "sessions"))
+    sid = store.create("auto")
+
+    class _S:
+        def __init__(self):
+            self.session_id = sid
+            self.called = None
+
+        def rename_session(self, title):
+            self.called = title
+            return title
+
+    s = _S()
+    keep, out = handle_command("/rename my title", s, store)
+    assert keep is True and s.called == "my title" and out == ["renamed: my title"]
+    keep, out = handle_command("/rename", s, store)
+    assert keep is True and out == ["usage: /rename <title>"]
