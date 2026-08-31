@@ -9,7 +9,7 @@
 | `cli.py` | 命令行入口，解析参数，加载 `.env`，启动会话，打印流式输出 | agent, llm |
 | `agent.py` | 会话循环：组织往返、解析输出、执行工具、判定终止、错误恢复 | llm, tools, context |
 | `context.py` | 维护消息序列、token 估算、预算裁剪、tool 结果处理 | 无（纯逻辑） |
-| `tools.py` | 工具 schema 定义 + 本地执行器 + 结果格式化（含 glob/grep 搜索与 gitignore 过滤） | 无（纯逻辑，标准库） |
+| `tools.py` | 工具 Command+Registry：Tool 基类 + ToolRegistry + 9 个 Tool 子类（BASE_TOOLS）+ 本地执行器 + 结果格式化（含 glob/grep 搜索与 gitignore 过滤） | 无（纯逻辑，标准库） |
 | `session.py` | 会话持久化：SessionStore（JSONL 存储/列表/恢复） | 无（纯逻辑，标准库） |
 | `workspace.py` | 工作区身份与元数据：Workspace（workspace.json 幂等读写/触摸/展示） | 无（纯逻辑，标准库） |
 | `permissions.py` | 权限模型：Policy（allow/ask/deny 三态、只读白名单、doom_loop） | 无（纯逻辑，标准库） |
@@ -77,10 +77,12 @@ loop:                                             │
 - 错误语义：429/5xx/网络错误指数退避重试（默认 3 次）；非重试性 HTTP 错误与畸形 tool 参数 JSON 抛 `LLMError`。
 
 ### tools.py
-- `TOOL_SCHEMAS: list[dict]` — 9 个工具（read_file/write_file/edit_file/list_dir/run_command/glob/grep/web_fetch/web_search）的 OpenAI functions JSON Schema。
-- 模型可见工具共 10 个：上述 9 个 + `dispatch_subagent`（schema 定义在 agent.py 的 `_DISPATCH_SUBAGENT_SCHEMA`，按 `allow_subagent` 动态注入）。
-- `execute(name, args, workdir) -> ToolResult`。
+- `Tool` 基类（Command 模式）：一个工具 = schema 声明 + 本地执行。类属性 `name` / `description` / `parameters` / `required` / `bypass_policy` / `visible`；方法 `schema() -> dict`（OpenAI functions JSON Schema）、`validate(args) -> str | None`（可选参数校验钩子，返回错误消息或 None）、`execute(args, workdir) -> ToolResult`（子类实现）。
+- `ToolRegistry(tools=None)` — `register(tool)`（按 `name` 入表）/ `get(name) -> Tool | None` / `schemas() -> list[dict]`（仅 `visible` 工具，过滤不可见编排工具）/ `execute(name, args, workdir) -> ToolResult`（unknown → `unknown tool: <name>`；先 `validate` 后 `execute`；异常兜底为 `ToolResult(ok=False)`）。
+- `BASE_TOOLS: list[Tool]` — 9 个 `Tool` 子类（read_file/list_dir/write_file/edit_file/run_command/glob/grep/web_fetch/web_search，固定顺序即 schema 顺序），各包装既有本地 handler。
+- `TOOL_SCHEMAS = [t.schema() for t in BASE_TOOLS]` 与顶层 `execute(name, args, workdir)` 由 `_DEFAULT_REGISTRY`（`ToolRegistry(list(BASE_TOOLS))`）派生保留，兼容旧调用方。
 - `ToolResult`：`{ok: bool, output: str, truncated: bool, exit_code?: int}` + `as_message()`。
+- 模型可见工具 10~11 个：上述 9 个 + `dispatch_subagent`，配置 skills 时另加 `use_skill`（均为 session-bound `Tool` 子类，见 agent.py，`visible` 条件控制 schema 注入）。
 - 所有输出为纯文本，便于回填给模型；超长自动截断（默认 8000 字符）；受保护路径（`.env*` 除 `.env.example`、`.git`）禁读禁写；写操作限定工作目录内。
 
 ### session.py
@@ -126,10 +128,11 @@ loop:                                             │
 - `load_session(session_id)` — 恢复会话时用 `estimate_tokens` 对全部历史消息设**启发式** `last_usage`（切会话后 stats 立即刷新为该会话估算值）；`new_session()` — 新建会话时**清空** `last_usage`（防止残留上一会话 stats）。
 - `rename_session(title) -> str` — 会话重命名：无 store 抛 `ValueError`、空 title 抛 `ValueError`；无 session_id 先 `store.create(title)`，再 `store.rename`（pin）。
 - `ask`（可选回调 `(prompt) -> str`）透传给 `Policy.check` 作权限询问实现，并透传给子会话（subagent）；缺省 `input()`。
-- `use_skill` 工具在 skills 存在时注册；system prompt 注入技能列表（Available skills），加载的 SKILL.md 全文回传模型。
-- `dispatch_subagent` 工具（schema `_DISPATCH_SUBAGENT_SCHEMA`，仅 `task` 参数）在 `allow_subagent=True` 时注入模型工具列表。
+- `use_skill`/`dispatch_subagent` 为 **session-bound `Tool` 子类**：`UseSkillTool`/`DispatchSubagentTool`（持会话引用，`bypass_policy=True`）。`AgentSession.__init__` 把 9 个 stateless 工具 + 两者组装为 `ToolRegistry` 存 `self._registry`，按 `visible` 条件注册（`UseSkillTool` 的 `visible=skills is not None`，`DispatchSubagentTool` 的 `visible=allow_subagent`）；`run_task` 经 `self._registry.schemas()` 注入模型工具列表。
+- `dispatch_subagent` 工具参数仅 `task`；`UseSkillTool` 参数仅 `name`；`_use_skill` 有 `skills is None` 守卫（返回 `skills are not available`）。
+- `_run_tool(tc) -> ToolResult` — 统一分派：① `self._registry.get(name)`（unknown → `unknown tool: <name>`）；② `bypass_policy` 为 False 且配置 `policy` 时 `Policy.check`（deny → `permission denied`）；③ `tool.execute(args, workdir)`；异常兜底为 `ToolResult(ok=False)`（`tool crash`）。原对 use_skill/dispatch_subagent 的 if 特判已消除。
 - `_dispatch_subagent(arguments) -> ToolResult` — 构造子会话（继承 workdir/llm/policy/interact/skills，`max_iterations=SUBAGENT_MAX_ITERATIONS=10`，`allow_subagent=False`，不带 store/workspace 故不持久化）跑同步嵌套循环，只回传最终报告（空报告回传 status，按 8000 字符截断）。
-- 子智能体阉割派遣为双层强制、深度恒 1：① 子会话工具列表不含 `dispatch_subagent` schema（模型不可见）；② `_run_tool` 运行时对 `allow_subagent=False` 会话的 `dispatch_subagent` 调用直接返回 `ToolResult(ok=False)` 拒绝。
+- 子智能体阉割派遣为双层强制、深度恒 1：① 子会话 `DispatchSubagentTool` 以 `visible=False` 注册，`_registry.schemas()` 不含其 schema（模型不可见、无法发起派遣）；② 即便模型尝试调用，`DispatchSubagentTool.execute` 运行时对 `allow_subagent=False` 会话返回 `ToolResult(ok=False)` 拒绝。
 - 权限继承：`policy`/`interact` 透传给子会话，`--deny`/`--ask` 规则对子智能体同样生效，防止绕过权限；子会话 system prompt 追加 `SUBAGENT_PROMPT_EXTRA`（subagent 指示）。
 - `run_task(task, on_delta=None, on_tool=None, on_assistant_start=None, on_tool_start=None, on_stats=None) -> RunResult` — 主循环；`on_delta` 流式增量展示；`on_assistant_start` 每回合 LLM 调用前回调（TUI 用于新建 assistant 行）；`on_tool_start(name, arguments)` 每工具调用前回调（携参，TUI 用于子智能体运行标注与 skill 加载标注）；`on_tool` 回调 `(name, ToolResult)` 逐工具调用；`on_stats(usage)` 每回合 chat 成功后回调（usage 缺失时启发式 `Usage(..., heuristic=True)`，并写 `last_usage`）；`RunResult` 含 `final_text/iterations/finished/reason`。
 - 终止条件（三条）：无 tool_calls（`complete`）／达到 `max_iterations`／连续失败（工具或 LLM 错误）达 3 次。

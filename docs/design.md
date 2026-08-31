@@ -64,7 +64,7 @@ v0.1.0 已实现范围：
 - [x] 错误处理：工具错误回传、API 重试（指数退避）、命令超时、解析异常恢复、LLM 错误优雅停止
 - [x] CLI：`--prompt` 一次性任务 + `--interactive` 对话模式，流式输出
 - [x] 搜索工具 glob/grep（纯标准库自实现，grep 带基础 gitignore）
-- [x] 测试：工具/解析/上下文单元测试 + mock 模型集成测试 + 真实 API 冒烟测试（326 用例全绿）
+- [x] 测试：工具/解析/上下文单元测试 + mock 模型集成测试 + 真实 API 冒烟测试（342 用例全绿）
 - [x] 会话持久化与多会话管理（JSONL 存储，--list-sessions/--resume，交互斜杠命令 /new /list /resume）
 - [x] 工作区一等公民（workspace.json 元数据，交互启动展示概况与上次会话续接提示）
 - [x] 权限模型（allow/ask/deny 三态 + 只读命令白名单 + doom_loop 重复检测，--allow/--deny/--ask）
@@ -79,6 +79,7 @@ v0.1.0 已实现范围：
 - [x] TUI 可观测性：状态栏常驻 token 占用/窗口占比/缓存命中率（真实 usage 优先，启发式回退）；上下文窗口自动解析（/models→查表→1M）+ 预算 B=min(CLI, 70%×W)
 - [x] 会话重命名：Ctrl+R / /rename，手动标题 pin 固定（不被自动标题覆盖）
 - [x] TUI 布局调整：顶栏完整路径 + 会话名；ctx/cache 移底栏紧凑格式；切会话即时刷新（ADR-024）
+- [x] 工具层 Command+Registry 显式化（Tool 基类 + ToolRegistry，9 stateless + use_skill/dispatch_subagent session-bound，bypass_policy/visible 语义，ADR-025）
 
 暂不实现（留作后续扩展，遵循 YAGNI）：
 
@@ -100,7 +101,7 @@ v0.1.0 已实现范围：
 3. [x] 实现 `tools.py`：五个工具的本地执行器
 4. [x] 实现 `context.py`：消息维护 + token 预算 + 裁剪
 5. [x] 实现 `agent.py`：循环、终止条件、错误恢复
-6. [x] 测试与冒烟：单元测试 → mock 集成测试 → 真实 API（已完成，326 用例 + 三次真实冒烟）
+6. [x] 测试与冒烟：单元测试 → mock 集成测试 → 真实 API（已完成，342 用例 + 三次真实冒烟）
 7. [x] 迭代增强：新增 glob/grep 搜索工具（ADR-011，设计见 docs/superpowers/specs/2026-08-29-glob-grep-design.md）
 8. [ ] 演示准备：README.txt + 演示任务 + 视频脚本（待办）
 9. [x] 迭代增强：会话持久化 + 多会话管理（ADR-012，设计见 docs/superpowers/specs/2026-08-29-session-persistence-design.md）
@@ -117,3 +118,4 @@ v0.1.0 已实现范围：
 20. [x] 迭代增强：TUI 可观测性（状态栏 ctx 占用/窗口占比/cache 命中率 + 上下文窗口自动解析/预算 B，ADR-023，设计见 docs/superpowers/specs/2026-08-31-observability-rename-design.md）
 21. [x] 迭代增强：会话重命名（Ctrl+R / /rename + 标题 pin 固定，ADR-023）
 22. [x] 迭代增强：TUI 布局调整（ADR-024，设计见 docs/superpowers/specs/2026-08-31-tui-layout-refine-design.md）
+23. [x] 迭代增强：工具层 Command+Registry 重构（ADR-025，设计见 docs/superpowers/specs/2026-09-01-tool-command-refactor-design.md）

@@ -4,8 +4,9 @@
 
 ## 1. 总则
 
-- 所有工具均为**本地执行**，不依赖任何服务端托管能力。当前模型可见工具共 10 个（read_file / write_file / edit_file / list_dir / run_command / glob / grep / web_fetch / web_search / dispatch_subagent）。
-- 其中 9 个的 JSON Schema 定义于 `tools.py` 的 `TOOL_SCHEMAS`；`dispatch_subagent` 为编排工具，其 schema 定义于 `agent.py`（`_DISPATCH_SUBAGENT_SCHEMA`），按 `allow_subagent` 动态注入。
+- 所有工具均为**本地执行**，不依赖任何服务端托管能力。当前模型可见工具共 10 个（read_file / write_file / edit_file / list_dir / run_command / glob / grep / web_fetch / web_search / dispatch_subagent；配置 skills 时另加 use_skill，共 11 个）。
+- 其中 9 个 stateless 工具的 schema 权威源为 `tools.py` 各 `Tool` 对象的属性（`name`/`description`/`parameters`/`required`）；`TOOL_SCHEMAS` 仍为派生导出（`[t.schema() for t in BASE_TOOLS]`）。`dispatch_subagent`/`use_skill` 为 agent.py 中的 session-bound `Tool` 子类（`DispatchSubagentTool`/`UseSkillTool`），其 schema 同样由对象属性派生。
+- 工具机制：`Tool` 基类（Command 模式：schema 声明 + `validate()` + `execute()`）+ `ToolRegistry`（`register`/`get`/`schemas`/`execute`）。**新增工具 = 实现一个 `Tool` 子类 + `register`**；`bypass_policy=True` 跳过权限检查，`visible=False` 不注入 schema。
 - 工具通过 OpenAI 原生 tool calling 接口暴露给模型。
 - 所有工具返回统一格式 `ToolResult`（纯文本，便于回填对话历史）。
 
@@ -124,12 +125,12 @@
 - 子智能体能力：继承父会话的 workdir/llm/policy/interact/skills（`use_skill` 可用），保留全部 9 个本地工具 + `use_skill`；`max_iterations=10`（`SUBAGENT_MAX_ITERATIONS`）。
 - 阉割派遣（双层强制，深度恒 1）：
   1. 子会话 `allow_subagent=False`，其模型工具列表不含 `dispatch_subagent` schema（模型不可见、无法发起派遣）；
-  2. 即便模型尝试调用，`_run_tool` 运行时对 `allow_subagent=False` 会话的 `dispatch_subagent` 直接返回拒绝（`ToolResult(ok=False)`）；
+  2. 即便模型尝试调用，`DispatchSubagentTool.execute` 运行时对 `allow_subagent=False` 会话直接返回拒绝（`ToolResult(ok=False)`）；
   3. 子会话 system prompt 追加 subagent 指示（"You cannot delegate to sub-subagents"）。
 - 权限继承：`policy`/`interact` 透传给子会话，`--deny`/`--ask` 规则对子智能体同样生效，防止绕过权限。
-- 注意：派遣动作本身不经过 policy 检查（子会话内部工具调用仍继承 policy）；`dispatch_subagent` 不在 tools.py 的 TOOL_SCHEMAS 中，由 agent.py 动态注入。
+- 注意：派遣动作本身不经过 policy 检查（`DispatchSubagentTool` 的 `bypass_policy=True`；子会话内部工具调用仍继承 policy）；`dispatch_subagent` 不在 `BASE_TOOLS`/`TOOL_SCHEMAS` 中，由 agent.py 的 `DispatchSubagentTool` 提供并在 `AgentSession._registry` 条件注册（`visible=allow_subagent`）。
 - 不持久化：子会话不携带 store/workspace，子任务对话不写入会话存储，回传仅最终报告，避免污染父上下文。
-- 注意：本工具的 JSON Schema 定义于 `agent.py`（`_DISPATCH_SUBAGENT_SCHEMA`），不属于 `tools.py` 的 `TOOL_SCHEMAS`。
+- 注意：本工具的 schema 由 `agent.py` 的 `DispatchSubagentTool`（session-bound `Tool` 子类，仅 `task` 参数）对象属性派生，不属于 `tools.py` 的 `BASE_TOOLS`/`TOOL_SCHEMAS`。
 
 ## 4. 输出长度与安全约定
 
