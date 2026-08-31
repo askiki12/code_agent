@@ -671,7 +671,6 @@ def test_current_title_without_store(tmp_path):
 
 
 def test_run_task_tools_from_registry(workdir, tmp_path):
-    from code_agent.llm import ToolCall
     from code_agent.skills import SkillRegistry
     import os as _os
 
@@ -713,6 +712,40 @@ def test_run_task_hides_conditional_schemas(workdir):
     names = {t["function"]["name"] for t in llm.tools}
     assert "use_skill" not in names
     assert "dispatch_subagent" not in names
+
+
+def test_run_task_mixed_visible_flags(workdir, tmp_path):
+    from code_agent.skills import SkillRegistry
+    import os as _os
+
+    d = _os.path.join(str(tmp_path / "proj"), ".code_agent", "skills", "greeting")
+    _os.makedirs(d, exist_ok=True)
+    with open(_os.path.join(d, "SKILL.md"), "w", encoding="utf-8") as f:
+        f.write("---\nname: greeting\ndescription: say hi\n---\nhello\n")
+    reg = SkillRegistry(str(tmp_path / "proj"), str(tmp_path / "user"))
+
+    class _LLM:
+        def __init__(self):
+            self.tools = None
+
+        def chat(self, messages, tools=None, on_delta=None):
+            self.tools = tools
+            return LLMResponse(content="done", tool_calls=[])
+
+    llm = _LLM()
+    s = AgentSession(workdir=workdir, llm=llm, skills=reg, allow_subagent=False)
+    s.run_task("task")
+    names = {t["function"]["name"] for t in llm.tools}
+    assert "use_skill" in names
+    assert "dispatch_subagent" not in names
+
+
+def test_use_skill_without_skills(workdir):
+    from code_agent.llm import ToolCall
+    s = AgentSession(workdir=workdir, llm=object())
+    res = s._run_tool(ToolCall(id="c1", name="use_skill", arguments={"name": "x"}))
+    assert res.ok is False and "skills are not available" in res.output
+    assert "AttributeError" not in res.output
 
 
 def test_run_tool_unknown(workdir):

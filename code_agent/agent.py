@@ -305,6 +305,8 @@ class AgentSession:
         return title
 
     def _use_skill(self, arguments: dict) -> ToolResult:
+        if self.skills is None:
+            return ToolResult(ok=False, output="skills are not available")
         if not isinstance(arguments, dict):
             return ToolResult(ok=False, output="skill arguments must be an object")
         name = arguments.get("name", "")
