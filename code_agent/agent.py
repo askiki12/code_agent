@@ -6,8 +6,8 @@ import sys
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from code_agent.context import Conversation
-from code_agent.llm import LLMError
+from code_agent.context import Conversation, estimate_tokens
+from code_agent.llm import LLMError, Usage
 from code_agent.permissions import Policy
 from code_agent.session import SessionStore, _make_title
 from code_agent.skills import SkillRegistry
@@ -100,6 +100,7 @@ class AgentSession:
         ask: Callable[[str], str] | None = None,
         skills: SkillRegistry | None = None,
         allow_subagent: bool = True,
+        context_window: int | None = None,
     ) -> None:
         self.workdir = workdir
         self.llm = llm
@@ -114,6 +115,10 @@ class AgentSession:
         self.session_id = session_id
         self.skills = skills
         self.allow_subagent = allow_subagent
+        self.last_usage: Usage | None = None
+        self.context_window = context_window if context_window else 1_000_000
+        if context_window:
+            self.max_context_tokens = min(max_context_tokens, int(0.7 * context_window))
         self._on_delta = None
         skills_section = ""
         if skills is not None:
@@ -143,6 +148,7 @@ class AgentSession:
         on_tool: Callable[[str, ToolResult], None] | None = None,
         on_assistant_start: Callable[[], None] | None = None,
         on_tool_start: Callable[[str, dict], None] | None = None,
+        on_stats: Callable[[Usage], None] | None = None,
     ) -> RunResult:
         self.conversation.add_user(task)
         self._on_delta = on_delta
@@ -175,6 +181,18 @@ class AgentSession:
                     )
                     continue
                 llm_error_count = 0
+                if response.usage is not None:
+                    usage = response.usage
+                else:
+                    usage = Usage(
+                        prompt_tokens=sum(
+                            estimate_tokens(str(m.get("content", ""))) for m in messages
+                        ),
+                        heuristic=True,
+                    )
+                self.last_usage = usage
+                if on_stats is not None:
+                    on_stats(usage)
                 self.conversation.add_assistant(response.content, response.tool_calls or None)
                 if not response.tool_calls:
                     return RunResult(
@@ -256,6 +274,17 @@ class AgentSession:
             return execute(tc.name, tc.arguments, self.workdir)
         except Exception as e:  # noqa: BLE001 - last-resort guard
             return ToolResult(ok=False, output=f"tool crash: {type(e).__name__}: {e}")
+
+    def rename_session(self, title: str) -> str:
+        if self.store is None:
+            raise ValueError("no session store configured")
+        title = title.strip()
+        if not title:
+            raise ValueError("title is required")
+        if self.session_id is None:
+            self.session_id = self.store.create(title)
+        self.store.rename(self.session_id, title)
+        return title
 
     def _use_skill(self, arguments: dict) -> ToolResult:
         if not isinstance(arguments, dict):

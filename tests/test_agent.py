@@ -537,3 +537,84 @@ def test_agent_on_assistant_and_tool_start_callbacks(workdir):
     assert result.finished and result.final_text == "done"
     assert len(starts) == 2
     assert tool_starts == [("read_file", {"path": "a.txt"})]
+
+
+from code_agent.llm import LLMResponse, Usage
+
+
+def test_context_window_budget_64k(workdir):
+    from code_agent.agent import AgentSession
+    s = AgentSession(workdir=workdir, llm=object(), max_context_tokens=90000, context_window=64000)
+    assert s.max_context_tokens == 44800
+    assert s.context_window == 64000
+
+
+def test_context_window_budget_128k(workdir):
+    from code_agent.agent import AgentSession
+    s = AgentSession(workdir=workdir, llm=object(), max_context_tokens=90000, context_window=128000)
+    assert s.max_context_tokens == 89600
+
+
+def test_context_window_defaults(workdir):
+    from code_agent.agent import AgentSession
+    s = AgentSession(workdir=workdir, llm=object())
+    assert s.max_context_tokens == 90000
+    assert s.context_window == 1_000_000
+
+
+def test_run_task_on_stats_heuristic_fallback(workdir):
+    from code_agent.agent import AgentSession
+
+    class _LLM:
+        def chat(self, messages, tools=None, on_delta=None):
+            return LLMResponse(content="done", tool_calls=[])
+
+    s = AgentSession(workdir=workdir, llm=_LLM(), max_iterations=2)
+    got = []
+    res = s.run_task("task", on_stats=got.append)
+    assert res.finished is True
+    assert len(got) == 1
+    assert got[0].heuristic is True
+    assert got[0].prompt_tokens > 0
+    assert s.last_usage is got[0]
+
+
+def test_run_task_on_stats_real_usage(workdir):
+    from code_agent.agent import AgentSession
+
+    class _LLM:
+        def chat(self, messages, tools=None, on_delta=None):
+            return LLMResponse(content="done", tool_calls=[],
+                               usage=Usage(prompt_tokens=123, completion_tokens=4, cached_tokens=50))
+
+    s = AgentSession(workdir=workdir, llm=_LLM(), max_iterations=2)
+    got = []
+    s.run_task("task", on_stats=got.append)
+    assert got[0].prompt_tokens == 123
+    assert got[0].cached_tokens == 50
+    assert got[0].heuristic is False
+
+
+def test_rename_session_creates_then_pins(tmp_path):
+    from code_agent.agent import AgentSession
+    from code_agent.session import SessionStore
+    store = SessionStore(str(tmp_path / "sessions"))
+    s = AgentSession(workdir=str(tmp_path), llm=object(), store=store)
+    assert s.session_id is None
+    title = s.rename_session("my title")
+    assert title == "my title"
+    assert s.session_id is not None
+    meta, _ = store.load(s.session_id)
+    assert meta["title"] == "my title"
+    assert meta.get("title_pinned") is True
+
+
+def test_rename_session_existing_id(tmp_path):
+    from code_agent.agent import AgentSession
+    from code_agent.session import SessionStore
+    store = SessionStore(str(tmp_path / "sessions"))
+    sid = store.create("auto")
+    s = AgentSession(workdir=str(tmp_path), llm=object(), store=store, session_id=sid)
+    s.rename_session("new name")
+    meta, _ = store.load(sid)
+    assert meta["title"] == "new name"
