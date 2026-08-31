@@ -8,7 +8,7 @@
 当前 TUI 无法感知上下文占用与缓存状态：用户不知道一次会话消耗了多少 token、离模型上下文上限/裁剪预算还有多远、服务端 prompt 缓存命中多少；会话标题只能由首个用户消息自动生成，无法手动命名。
 
 **目标**：
-1. **可观测性**：TUI 状态栏常驻显示真实 token 占用（占预算百分比）与缓存命中率；数据优先取真实 API usage，provider 不支持时回退本地启发式估算。
+1. **可观测性**：TUI 状态栏常驻显示真实 token 占用（占窗口百分比）与缓存命中率；数据优先取真实 API usage，provider 不支持时回退本地启发式估算。
 2. **上下文窗口**：自动解析模型上下文窗口 W（`/models` → 模型名查表 → 默认 1M）；裁剪预算 B = min(CLI `--max-context-tokens`, 70% × W)，窗口小预算收紧、窗口大不裸奔。
 3. **会话重命名**：Ctrl+R 快捷键 + `/rename <title>` 斜杠命令，手动标题固定（不再被自动标题覆盖）。
 
@@ -27,7 +27,7 @@
 - `agent.py`：`AgentSession` 新增 `context_window` 属性与预算计算；`run_task` 新增 `on_stats` 回调；启发式回退构造 Usage；`rename_session(title)`；标题 pin 透传。
 - `session.py`：`SessionStore.rename(session_id, title)`（pin 标记）；`save()` 尊重 pin。
 - `cli.py`：`--context-window <n>` 覆盖自动解析；`handle_command` 新增 `/rename <title>`。
-- `tui/widgets.py`：StatusBar 渲染 `ctx x/B 占比` 与 cache 段（启发式 `~`、无缓存数据省略、窄宽度省略百分比）。
+- `tui/widgets.py`：StatusBar 渲染 `ctx x/W 占比` 与 cache 段（启发式 `~`、无缓存数据省略、窄宽度省略百分比）。
 - `tui/app.py`：Ctrl+R rename 模式（输入栏），提交重命名 + 刷新状态栏/会话列表；Esc 取消。
 - `tui/worker.py`：桥接 `on_stats`。
 - 测试、文档同步、ADR-023。
@@ -95,16 +95,16 @@ agent.run_task
 ### 6.1 StatusBar 展示格式
 
 ```
-… | ctx 12.4k/90k 14% cache 43% | ● idle
+… | ctx 12.4k/128k 10% cache 43% | ● idle
 ```
 
 - 分子 = 最近回合 `prompt_tokens`；分母 = **上下文窗口 W**（`context_window`）。
 - 展示条件与 cache 段：
-  - usage 存在（真实）：`12.4k/90k 14%`；`cached_tokens>0` → 追加 `cache N%`；`cached_tokens==0` → 不显示 cache 段。
-  - usage 为 None（启发式回退）：`~12.4k/90k 14%`，无 cache 段。
+  - usage 存在（真实）：`12.4k/128k 10%`；`cached_tokens>0` → 追加 `cache N%`；`cached_tokens==0` → 不显示 cache 段。
+  - usage 为 None（启发式回退）：`~12.4k/128k 10%`，无 cache 段。
   - 既无 usage 也无启发式值（未跑任务）：不显示 ctx 段。
-- 宽度不足时省略百分比（保留 `x/B`）。
-- 若 x > B（启发式估算偏差等），百分比段加 `!` 告警。
+- 宽度不足时省略百分比（保留 `x/W`）。
+- 若 x > W（启发式估算偏差等），百分比段加 `!` 告警。
 
 ## 7. 会话重命名（SessionStore / AgentSession / CLI / TUI）
 
@@ -139,7 +139,7 @@ agent.run_task
 | `/models` 请求失败 / 非 JSON / 无匹配 | 静默走查表 / 默认 1M |
 | provider 拒 `include_usage`（4xx） | 去字段重试一次，再失败走既有错误路径 |
 | provider 不回 usage | 启发式回退，`~` 标注 |
-| 展示宽度不足 | 省略百分比，保留 `x/B` |
+| 展示宽度不足 | 省略百分比，保留 `x/W` |
 | `rename` 目标会话不存在（KeyError） | 提示 `session not found: <id>`，不改状态 |
 | `/rename` 无标题 | 输出用法提示 |
 
@@ -162,7 +162,7 @@ agent.run_task
 - `test_cli.py`：
   12. `/rename <title>` 成功输出 `renamed:`；空标题输出用法提示。
 - `test_tui_widgets.py`：
-  13. StatusBar 渲染 `ctx x/B 占比`；cache 段有/无；启发式 `~`；窄宽度省略百分比。
+  13. StatusBar 渲染 `ctx x/W 占比`；cache 段有/无；启发式 `~`；窄宽度省略百分比。
 - `test_tui_app.py`：
   14. Ctrl+R 进入 rename 模式 → 提交重命名 → 状态栏/会话列表刷新。
   15. Esc 取消退出 rename 模式。
