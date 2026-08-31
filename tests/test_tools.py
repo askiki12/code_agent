@@ -2,7 +2,16 @@ import os
 from pathlib import Path
 
 from code_agent import web
-from code_agent.tools import TOOL_SCHEMAS, ToolResult, execute, truncate
+from code_agent.tools import (
+    TOOL_SCHEMAS,
+    BASE_TOOLS,
+    Tool,
+    ToolRegistry,
+    ToolResult,
+    ReadFileTool,
+    execute,
+    truncate,
+)
 from code_agent.web import SearchResult, WebContent, WebFetchError
 
 
@@ -474,3 +483,68 @@ def test_web_search_non_int_max_results_defaults(workdir, monkeypatch):
     monkeypatch.setattr("code_agent.tools.web.search", fake_search)
     r = execute("web_search", {"query": "q", "max_results": "x"}, workdir)
     assert r.ok and seen["max_results"] == 8
+
+
+def test_tool_schema_roundtrip():
+    s = ReadFileTool().schema()
+    assert s["type"] == "function"
+    assert s["function"]["name"] == "read_file"
+    assert set(s["function"]["parameters"]["required"]) == {"path"}
+
+
+def test_base_tools_nine_and_schema_names():
+    assert len(BASE_TOOLS) == 9
+    names = {t.name for t in BASE_TOOLS}
+    assert names == {"read_file", "write_file", "edit_file", "list_dir",
+                     "run_command", "glob", "grep", "web_fetch", "web_search"}
+    assert names == {s["function"]["name"] for s in TOOL_SCHEMAS}
+
+
+def test_registry_register_and_get():
+    reg = ToolRegistry()
+    t = ReadFileTool()
+    reg.register(t)
+    assert reg.get("read_file") is t
+    assert reg.get("nope") is None
+
+
+def test_registry_schemas_filters_invisible():
+    class _Hidden(Tool):
+        name = "hidden"
+        description = "x"
+        parameters = {}
+        required = []
+        visible = False
+
+    reg = ToolRegistry([_Hidden()])
+    assert reg.schemas() == []
+
+
+def test_registry_execute_unknown():
+    assert execute("nope", {}, "/tmp").ok is False
+    assert "unknown tool: nope" in execute("nope", {}, "/tmp").output
+
+
+def test_registry_execute_delegates_to_tool():
+    reg = ToolRegistry([ReadFileTool()])
+    r = reg.execute("read_file", {"path": "missing"}, "/tmp")
+    assert r.ok is False and "not found" in r.output
+
+
+def test_registry_execute_validate_hook():
+    class _Guard(Tool):
+        name = "guard"
+        description = ""
+        parameters = {}
+        required = []
+
+        def validate(self, args):
+            return "bad arg" if "x" not in args else None
+
+        def execute(self, args, workdir):
+            return ToolResult(ok=True, output="ok")
+
+    reg = ToolRegistry([_Guard()])
+    assert reg.execute("guard", {}, "/tmp").ok is False
+    assert reg.execute("guard", {}, "/tmp").output == "bad arg"
+    assert reg.execute("guard", {"x": 1}, "/tmp").ok is True

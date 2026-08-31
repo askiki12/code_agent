@@ -133,95 +133,174 @@ def _schema(name: str, description: str, properties: dict, required: list) -> di
     }
 
 
-TOOL_SCHEMAS = [
-    _schema(
-        "read_file",
-        "Read a text file (with optional line range). Refuses protected paths.",
-        {
-            "path": {"type": "string", "description": "File path (absolute or relative to workdir)"},
-            "offset": {"type": "integer", "description": "1-based start line"},
-            "limit": {"type": "integer", "description": "Max lines to read"},
+class Tool:
+    """Command 模式基类：一个工具 = schema 声明 + 本地执行。"""
+    name: str = ""
+    description: str = ""
+    parameters: dict = {}
+    required: list[str] = []
+    bypass_policy: bool = False
+    visible: bool = True
+
+    def schema(self) -> dict:
+        return _schema(self.name, self.description, self.parameters, self.required)
+
+    def validate(self, args: dict) -> str | None:
+        return None
+
+    def execute(self, args: dict, workdir: str) -> ToolResult:
+        raise NotImplementedError
+
+
+class ToolRegistry:
+    def __init__(self, tools: list[Tool] | None = None) -> None:
+        self._tools: dict[str, Tool] = {}
+        for tool in tools or []:
+            self.register(tool)
+
+    def register(self, tool: Tool) -> None:
+        self._tools[tool.name] = tool
+
+    def get(self, name: str) -> Tool | None:
+        return self._tools.get(name)
+
+    def schemas(self) -> list[dict]:
+        return [t.schema() for t in self._tools.values() if t.visible]
+
+    def execute(self, name: str, args: dict, workdir: str) -> ToolResult:
+        tool = self.get(name)
+        if tool is None:
+            return ToolResult(ok=False, output=f"unknown tool: {name}")
+        msg = tool.validate(args)
+        if msg:
+            return ToolResult(ok=False, output=msg)
+        try:
+            return tool.execute(args, workdir)
+        except Exception as e:  # noqa: BLE001 - last-resort guard
+            return ToolResult(ok=False, output=f"tool crashed: {type(e).__name__}: {e}")
+
+
+class ReadFileTool(Tool):
+    name = "read_file"
+    description = "Read a text file (with optional line range). Refuses protected paths."
+    parameters = {
+        "path": {"type": "string", "description": "File path (absolute or relative to workdir)"},
+        "offset": {"type": "integer", "description": "1-based start line"},
+        "limit": {"type": "integer", "description": "Max lines to read"},
+    }
+    required = ["path"]
+
+    def execute(self, args: dict, workdir: str) -> ToolResult:
+        return _read_file(args, workdir)
+
+
+class ListDirTool(Tool):
+    name = "list_dir"
+    description = "List directory entries with type and size. Skips .git and caches."
+    parameters = {"path": {"type": "string", "description": "Directory path (defaults to workdir)"}}
+    required = []
+
+    def execute(self, args: dict, workdir: str) -> ToolResult:
+        return _list_dir(args, workdir)
+
+
+class WriteFileTool(Tool):
+    name = "write_file"
+    description = "Create or overwrite a file (must be inside the workdir)."
+    parameters = {
+        "path": {"type": "string", "description": "File path (absolute or relative to workdir)"},
+        "content": {"type": "string", "description": "Full file content"},
+    }
+    required = ["path", "content"]
+
+    def execute(self, args: dict, workdir: str) -> ToolResult:
+        return _write_file(args, workdir)
+
+
+class EditFileTool(Tool):
+    name = "edit_file"
+    description = "Replace an exact substring in a file (must match uniquely unless replace_all)."
+    parameters = {
+        "path": {"type": "string", "description": "File path"},
+        "old_string": {"type": "string", "description": "Exact text to replace"},
+        "new_string": {"type": "string", "description": "Replacement text"},
+        "replace_all": {"type": "boolean", "description": "Replace every occurrence"},
+    }
+    required = ["path", "old_string", "new_string"]
+
+    def execute(self, args: dict, workdir: str) -> ToolResult:
+        return _edit_file(args, workdir)
+
+
+class RunCommandTool(Tool):
+    name = "run_command"
+    description = "Run a shell command in the workdir (timeout and output limits apply)."
+    parameters = {
+        "command": {"type": "string", "description": "Shell command"},
+        "timeout": {"type": "number", "description": f"Timeout in seconds (default {DEFAULT_COMMAND_TIMEOUT})"},
+    }
+    required = ["command"]
+
+    def execute(self, args: dict, workdir: str) -> ToolResult:
+        return _run_command(args, workdir)
+
+
+class GlobTool(Tool):
+    name = "glob"
+    description = "Find files by glob pattern (supports ** recursion). Refuses protected paths."
+    parameters = {
+        "pattern": {"type": "string", "description": "Glob pattern, e.g. '**/*.py'"},
+        "path": {"type": "string", "description": "Directory to search (defaults to workdir)"},
+    }
+    required = ["pattern"]
+
+    def execute(self, args: dict, workdir: str) -> ToolResult:
+        return _glob(args, workdir)
+
+
+class GrepTool(Tool):
+    name = "grep"
+    description = "Search file contents with a regex. Skips .git, protected and gitignored paths."
+    parameters = {
+        "pattern": {"type": "string", "description": "Regex to search"},
+        "path": {"type": "string", "description": "File or directory (defaults to workdir)"},
+        "include": {"type": "string", "description": "fnmatch on filename, e.g. '*.py'"},
+        "ignore_case": {"type": "boolean", "description": "Case-insensitive search"},
+        "output_mode": {
+            "type": "string",
+            "enum": ["content", "files_with_matches", "count"],
+            "description": "Default 'content'",
         },
-        ["path"],
-    ),
-    _schema(
-        "list_dir",
-        "List directory entries with type and size. Skips .git and caches.",
-        {"path": {"type": "string", "description": "Directory path (defaults to workdir)"}},
-        [],
-    ),
-    _schema(
-        "write_file",
-        "Create or overwrite a file (must be inside the workdir).",
-        {
-            "path": {"type": "string", "description": "File path (absolute or relative to workdir)"},
-            "content": {"type": "string", "description": "Full file content"},
-        },
-        ["path", "content"],
-    ),
-    _schema(
-        "edit_file",
-        "Replace an exact substring in a file (must match uniquely unless replace_all).",
-        {
-            "path": {"type": "string", "description": "File path"},
-            "old_string": {"type": "string", "description": "Exact text to replace"},
-            "new_string": {"type": "string", "description": "Replacement text"},
-            "replace_all": {"type": "boolean", "description": "Replace every occurrence"},
-        },
-        ["path", "old_string", "new_string"],
-    ),
-    _schema(
-        "run_command",
-        "Run a shell command in the workdir (timeout and output limits apply).",
-        {
-            "command": {"type": "string", "description": "Shell command"},
-            "timeout": {"type": "number", "description": f"Timeout in seconds (default {DEFAULT_COMMAND_TIMEOUT})"},
-        },
-        ["command"],
-    ),
-    _schema(
-        "glob",
-        "Find files by glob pattern (supports ** recursion). Refuses protected paths.",
-        {
-            "pattern": {"type": "string", "description": "Glob pattern, e.g. '**/*.py'"},
-            "path": {"type": "string", "description": "Directory to search (defaults to workdir)"},
-        },
-        ["pattern"],
-    ),
-    _schema(
-        "grep",
-        "Search file contents with a regex. Skips .git, protected and gitignored paths.",
-        {
-            "pattern": {"type": "string", "description": "Regex to search"},
-            "path": {"type": "string", "description": "File or directory (defaults to workdir)"},
-            "include": {"type": "string", "description": "fnmatch on filename, e.g. '*.py'"},
-            "ignore_case": {"type": "boolean", "description": "Case-insensitive search"},
-            "output_mode": {
-                "type": "string",
-                "enum": ["content", "files_with_matches", "count"],
-                "description": "Default 'content'",
-            },
-        },
-        ["pattern"],
-    ),
-    _schema(
-        "web_fetch",
-        "Fetch a public web page (http/https) and return its title, readable text and first 10 links. Refuses non-public addresses (internal/private networks, file://).",
-        {
-            "url": {"type": "string", "description": "Public http(s) URL to fetch"},
-        },
-        ["url"],
-    ),
-    _schema(
-        "web_search",
-        "Search the web (DuckDuckGo Lite, keyless). Returns numbered results with title, real URL and snippet. Use web_fetch on a result URL for full content.",
-        {
-            "query": {"type": "string", "description": "Search query"},
-            "max_results": {"type": "integer", "description": "Max results (default 8)"},
-        },
-        ["query"],
-    ),
-]
+    }
+    required = ["pattern"]
+
+    def execute(self, args: dict, workdir: str) -> ToolResult:
+        return _grep(args, workdir)
+
+
+class WebFetchTool(Tool):
+    name = "web_fetch"
+    description = ("Fetch a public web page (http/https) and return its title, readable text and first 10 links. "
+                  "Refuses non-public addresses (internal/private networks, file://).")
+    parameters = {"url": {"type": "string", "description": "Public http(s) URL to fetch"}}
+    required = ["url"]
+
+    def execute(self, args: dict, workdir: str) -> ToolResult:
+        return _web_fetch(args, workdir)
+
+
+class WebSearchTool(Tool):
+    name = "web_search"
+    description = ("Search the web (DuckDuckGo Lite, keyless). Returns numbered results with title, real URL and snippet. "
+                  "Use web_fetch on a result URL for full content.")
+    parameters = {
+        "query": {"type": "string", "description": "Search query"},
+        "max_results": {"type": "integer", "description": "Max results (default 8)"},
+    }
+    required = ["query"]
+
+    def execute(self, args: dict, workdir: str) -> ToolResult:
+        return _web_search(args, workdir)
 
 def _write_file(args: dict, workdir: str) -> ToolResult:
     path = _resolve(args.get("path", ""), workdir)
@@ -601,24 +680,22 @@ def _web_search(args: dict, workdir: str) -> ToolResult:
     return ToolResult(ok=True, output=out, truncated=truncated)
 
 
-_HANDLERS = {
-    "read_file": _read_file,
-    "write_file": _write_file,
-    "edit_file": _edit_file,
-    "list_dir": _list_dir,
-    "run_command": _run_command,
-    "glob": _glob,
-    "grep": _grep,
-    "web_fetch": _web_fetch,
-    "web_search": _web_search,
-}
+BASE_TOOLS: list[Tool] = [
+    ReadFileTool(),
+    ListDirTool(),
+    WriteFileTool(),
+    EditFileTool(),
+    RunCommandTool(),
+    GlobTool(),
+    GrepTool(),
+    WebFetchTool(),
+    WebSearchTool(),
+]
+
+TOOL_SCHEMAS = [t.schema() for t in BASE_TOOLS]
+
+_DEFAULT_REGISTRY = ToolRegistry(list(BASE_TOOLS))
 
 
 def execute(name: str, args: dict, workdir: str) -> ToolResult:
-    handler = _HANDLERS.get(name)
-    if handler is None:
-        return ToolResult(ok=False, output=f"unknown tool: {name}")
-    try:
-        return handler(args, workdir)
-    except Exception as e:  # noqa: BLE001 - last-resort guard
-        return ToolResult(ok=False, output=f"tool crashed: {type(e).__name__}: {e}")
+    return _DEFAULT_REGISTRY.execute(name, args, workdir)
