@@ -1046,3 +1046,42 @@ def test_prompt_memory_guidance_absent(workdir):
     session.run_task("hi")
     system = llm.calls[0][0]["content"]
     assert "recall(query, top_k)" not in system
+
+
+def test_prompt_skill_use_guidance(workdir, tmp_path):
+    from code_agent.skills import SkillRegistry
+    proj = str(tmp_path / "proj")
+    _write_skill(proj, "code-review", "review code", "step1")
+    reg = SkillRegistry(proj, str(tmp_path / "user"))
+    llm = FakeLLM([LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=2, skills=reg)
+    session.run_task("hi")
+    system = llm.calls[0][0]["content"]
+    assert "Available skills" in system
+    assert "use_skill(name)" in system
+
+
+def test_prompt_skill_create_guidance_when_memory(workdir, tmp_path):
+    from code_agent.skills import SkillRegistry
+    proj = str(tmp_path / "proj")
+    _write_skill(proj, "code-review", "review code", "step1")
+    reg = SkillRegistry(proj, str(tmp_path / "user"))
+    llm = FakeLLM([LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=2, skills=reg, memory=True)
+    session.run_task("hi")
+    system = llm.calls[0][0]["content"]
+    assert "Authoring skills" in system
+    assert "create_skill(name, description, content)" in system
+    assert ".code_agent" in system
+
+
+def test_prompt_skill_create_guidance_absent_without_memory(workdir, tmp_path):
+    from code_agent.skills import SkillRegistry
+    proj = str(tmp_path / "proj")
+    _write_skill(proj, "code-review", "review code", "step1")
+    reg = SkillRegistry(proj, str(tmp_path / "user"))
+    llm = FakeLLM([LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=2, skills=reg)
+    session.run_task("hi")
+    system = llm.calls[0][0]["content"]
+    assert "Authoring skills" not in system

@@ -69,6 +69,24 @@ MEMORY_GUIDANCE = (
     "Relevant memories are auto-injected at task start and auto-summarized on success."
 )
 
+SKILL_GUIDANCE_USE = (
+    "\n\nSkills: use_skill(name) loads a skill's SKILL.md instructions into context — "
+    "call it when the task matches an available skill, then follow its steps."
+)
+
+SKILL_GUIDANCE_CREATE = (
+    "\n\nAuthoring skills: a skill is a SKILL.md file at "
+    "<workdir>/.code_agent/skills/<name>/SKILL.md (project-level) or "
+    "~/.code_agent/skills/<name>/SKILL.md (user-level; project wins on name conflict). "
+    "Format: frontmatter then a markdown body:\n"
+    "---\nname: <letters, digits, - or _>\ndescription: one-line 'when to use this'\n---\n"
+    "<reusable steps, gotchas, exact commands>\n"
+    "Create it with create_skill(name, description, content) — it writes the file for you; "
+    ".code_agent is a protected path, so never write_file/edit_file a skill by hand. "
+    "The description shows in the skill list and picker, so make it matchable. "
+    "Write a skill after finishing a reusable, non-trivial workflow."
+)
+
 class UseSkillTool(Tool):
     name = "use_skill"
     description = "Load a skill's instructions into context. Returns the skill content; follow it."
@@ -223,7 +241,8 @@ class AgentSession:
             if entries:
                 skills_section = (
                     "\n\nAvailable skills:\n" + entries
-                    + "\nUse the use_skill tool to load a skill when the task matches."
+                    + SKILL_GUIDANCE_USE
+                    + (SKILL_GUIDANCE_CREATE if memory else "")
                 )
         self._system_prompt = (
             SYSTEM_PROMPT
