@@ -1011,3 +1011,38 @@ def test_prompt_base_tool_guidance(workdir):
     assert "Choosing tools:" in system
     assert "Discover before reading" in system
     assert "edit_file" in system
+
+
+def test_prompt_dispatch_guidance_present(workdir):
+    llm = FakeLLM([LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=2)
+    session.run_task("hi")
+    system = llm.calls[0][0]["content"]
+    assert "When to delegate" in system
+    assert "dispatch_subagent(task)" in system
+
+
+def test_prompt_dispatch_guidance_absent_for_subagent(workdir):
+    llm = FakeLLM([LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=2, allow_subagent=False)
+    session.run_task("hi")
+    system = llm.calls[0][0]["content"]
+    assert "When to delegate" not in system
+    assert "You are a subagent" in system
+
+
+def test_prompt_memory_guidance_present(workdir):
+    llm = FakeLLM([LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=2, memory=True)
+    session.run_task("hi")
+    system = llm.calls[0][0]["content"]
+    assert "recall(query, top_k)" in system
+    assert "remember(content, tags)" in system
+
+
+def test_prompt_memory_guidance_absent(workdir):
+    llm = FakeLLM([LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=2)
+    session.run_task("hi")
+    system = llm.calls[0][0]["content"]
+    assert "recall(query, top_k)" not in system

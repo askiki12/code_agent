@@ -56,6 +56,19 @@ SUBAGENT_PROMPT_EXTRA = (
     "did and found. You cannot delegate to sub-subagents."
 )
 
+DISPATCH_GUIDANCE = (
+    "\n\nWhen to delegate: dispatch_subagent(task) runs an independent subagent "
+    "that keeps all tools except subagent dispatch and returns a concise report. "
+    "Use it for a sub-task that does not need shared context; do not use it for trivial work."
+)
+
+MEMORY_GUIDANCE = (
+    "\n\nProject memory: recall(query, top_k) searches durable knowledge saved from "
+    "prior sessions — query it before re-reading long documents. "
+    "remember(content, tags) saves new facts/decisions/gotchas for future sessions. "
+    "Relevant memories are auto-injected at task start and auto-summarized on success."
+)
+
 class UseSkillTool(Tool):
     name = "use_skill"
     description = "Load a skill's instructions into context. Returns the skill content; follow it."
@@ -214,7 +227,9 @@ class AgentSession:
                 )
         self._system_prompt = (
             SYSTEM_PROMPT
+            + (DISPATCH_GUIDANCE if allow_subagent else "")
             + skills_section
+            + (MEMORY_GUIDANCE if memory else "")
             + (SUBAGENT_PROMPT_EXTRA if not allow_subagent else "")
         )
         if resume:
