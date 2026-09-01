@@ -4,7 +4,7 @@
 
 ## 1. 总则
 
-- 所有工具均为**本地执行**，不依赖任何服务端托管能力。当前模型可见工具按条件共 9~14 个（read_file / write_file / edit_file / list_dir / run_command / glob / grep / web_fetch / web_search / dispatch_subagent；配置 skills 时另加 use_skill；`memory=True` 时另加 remember / recall / create_skill，均按条件注入）。
+- 所有工具均为**本地执行**，不依赖任何服务端托管能力。当前模型可见工具按条件共 9~14 个（read_file / write_file / edit_file / list_dir / run_command / glob / grep / web_fetch / web_search / dispatch_subagent；配置 skills 时另加 use_skill；`memory=True` 时另加 remember / recall，`memory=True` 且技能库非空（skills 配置）时另加 create_skill，均按条件注入）。
 - 其中 9 个 stateless 工具的 schema 权威源为 `tools.py` 各 `Tool` 对象的属性（`name`/`description`/`parameters`/`required`）；`TOOL_SCHEMAS` 仍为派生导出（`[t.schema() for t in BASE_TOOLS]`）。`dispatch_subagent`/`use_skill` 为 agent.py 中的 session-bound `Tool` 子类（`DispatchSubagentTool`/`UseSkillTool`），`remember`/`recall`/`create_skill` 同为 agent.py 中的 session-bound `Tool` 子类（`RememberTool`/`RecallTool`/`CreateSkillTool`），其 schema 同样由对象属性派生。
 - 工具机制：`Tool` 基类（Command 模式：schema 声明 + `validate()` + `execute()`）+ `ToolRegistry`（`register`/`get`/`schemas`/`execute`）。**新增工具 = 实现一个 `Tool` 子类 + `register`**；`bypass_policy=True` 跳过权限检查，`visible=False` 不注入 schema。
 - 工具通过 OpenAI 原生 tool calling 接口暴露给模型。
@@ -156,6 +156,7 @@
   - `name`（string，必填）：技能名（仅字母/数字/`-`/`_`）。
   - `description`（string，必填）：简短描述。
   - `content`（string，必填）：Markdown 指令正文。
+- 注册：`memory=True` 且技能库非空（skills 配置）时注册——`AgentSession.__init__` 按 `memory and skills is not None` 注册（`visible=True`，走 policy）；仅 `memory=True`、无技能库时不注册（schema 不可见），避免模型看到必然返回 `skills are not available` 的工具。
 - 返回：`created skill: <name> (<path>)`；name 非法返回 `invalid skill name: <...>`；`skills is None` 时返回 `skills are not available`。
 - 机制：复用 `SkillRegistry.add`（agent.py `CreateSkillTool`），写入 `<workdir>/.code_agent/skills/<name>/SKILL.md`，与 `use_skill` 同一技能库——沉淀后的技能立即对当前及未来会话可用。技能沉淀**仅**由模型显式 `create_skill` 触发，不走任务成功的自动沉淀通道。`.code_agent` 为受保护路径，模型不可经文件工具直写，只能走本工具。
 

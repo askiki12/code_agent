@@ -233,6 +233,7 @@ class AgentSession:
         if memory:
             tools.append(RememberTool(self, visible=True))
             tools.append(RecallTool(self, visible=True))
+        if memory and skills is not None:
             tools.append(CreateSkillTool(self, visible=True))
         self._registry = ToolRegistry(tools)
         skills_section = ""

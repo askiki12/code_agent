@@ -855,9 +855,10 @@ def test_memory_tools_present_when_enabled(workdir):
     s = AgentSession(workdir=workdir, llm=object(), memory=True)
     assert s._registry.get("remember") is not None
     assert s._registry.get("recall") is not None
-    assert s._registry.get("create_skill") is not None
+    assert s._registry.get("create_skill") is None
     names = {t["function"]["name"] for t in s._registry.schemas()}
-    assert {"remember", "recall", "create_skill"} <= names
+    assert {"remember", "recall"} <= names
+    assert "create_skill" not in names
 
 
 def test_remember_recall_tools(workdir):
@@ -1032,7 +1033,7 @@ def test_prompt_dispatch_guidance_absent_for_subagent(workdir):
 
 
 def test_prompt_memory_guidance_present(workdir):
-    llm = FakeLLM([LLMResponse(content="done", tool_calls=[])])
+    llm = FakeLLM([LLMResponse(content="done", tool_calls=[]), LLMResponse(content="done", tool_calls=[])])
     session = AgentSession(workdir=workdir, llm=llm, max_iterations=2, memory=True)
     session.run_task("hi")
     system = llm.calls[0][0]["content"]
@@ -1066,7 +1067,7 @@ def test_prompt_skill_create_guidance_when_memory(workdir, tmp_path):
     proj = str(tmp_path / "proj")
     _write_skill(proj, "code-review", "review code", "step1")
     reg = SkillRegistry(proj, str(tmp_path / "user"))
-    llm = FakeLLM([LLMResponse(content="done", tool_calls=[])])
+    llm = FakeLLM([LLMResponse(content="done", tool_calls=[]), LLMResponse(content="done", tool_calls=[])])
     session = AgentSession(workdir=workdir, llm=llm, max_iterations=2, skills=reg, memory=True)
     session.run_task("hi")
     system = llm.calls[0][0]["content"]
@@ -1085,3 +1086,43 @@ def test_prompt_skill_create_guidance_absent_without_memory(workdir, tmp_path):
     session.run_task("hi")
     system = llm.calls[0][0]["content"]
     assert "Authoring skills" not in system
+
+
+def test_prompt_guidance_matches_schema(workdir, tmp_path):
+    from code_agent.skills import SkillRegistry
+    proj = str(tmp_path / "proj")
+    _write_skill(proj, "code-review", "review code", "step1")
+    reg = SkillRegistry(proj, str(tmp_path / "user"))
+
+    def _run(**kwargs):
+        llm = FakeLLM([LLMResponse(content="done", tool_calls=[]), LLMResponse(content="done", tool_calls=[])])
+        session = AgentSession(workdir=workdir, llm=llm, max_iterations=2, **kwargs)
+        session.run_task("hi")
+        names = {t["function"]["name"] for t in session._registry.schemas()}
+        return llm.calls[0][0]["content"], names
+
+    system, names = _run()
+    assert "When to delegate" in system
+    assert "use_skill(name)" not in system
+    assert "recall(query, top_k)" not in system
+    assert "create_skill" not in names
+    assert "remember" not in names
+
+    system, names = _run(skills=reg, memory=True)
+    assert "Available skills" in system
+    assert "use_skill(name)" in system
+    assert "Authoring skills" in system
+    assert "create_skill(name, description, content)" in system
+    assert "recall(query, top_k)" in system
+    assert {"use_skill", "remember", "recall", "create_skill"} <= names
+
+    system, names = _run(memory=True)
+    assert "recall(query, top_k)" in system
+    assert "use_skill(name)" not in system
+    assert "Authoring skills" not in system
+    assert "create_skill" not in names
+    assert {"remember", "recall"} <= names
+
+    system, names = _run(allow_subagent=False)
+    assert "When to delegate" not in system
+    assert "You are a subagent" in system
