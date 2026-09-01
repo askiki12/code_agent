@@ -81,6 +81,7 @@ v0.1.0 已实现范围：
 - [x] TUI 布局调整：顶栏完整路径 + 会话名；ctx/cache 移底栏紧凑格式；切会话即时刷新（ADR-024）
 - [x] 工具层 Command+Registry 显式化（Tool 基类 + ToolRegistry，9 stateless + use_skill/dispatch_subagent session-bound，bypass_policy/visible 语义，ADR-025）
 - [x] 项目记忆与经验沉淀：remember/recall/create_skill + 首任务自动注入 top-K 记忆 + 成功自动总结沉淀（关键词检索零依赖，ADR-026）
+- [x] 系统提示词按能力注入：基础工具选用指引 + skill 使用/编写指南 + 记忆/派遣指引（条件注入，ADR-027）
 
 暂不实现（留作后续扩展，遵循 YAGNI）：
 
@@ -121,3 +122,4 @@ v0.1.0 已实现范围：
 22. [x] 迭代增强：TUI 布局调整（ADR-024，设计见 docs/superpowers/specs/2026-08-31-tui-layout-refine-design.md）
 23. [x] 迭代增强：工具层 Command+Registry 重构（ADR-025，设计见 docs/superpowers/specs/2026-09-01-tool-command-refactor-design.md）
 24. [x] 迭代增强：项目记忆与经验沉淀（ADR-026，设计见 docs/superpowers/specs/2026-09-01-project-memory-skill-design.md）
+25. [x] 迭代增强：系统提示词按能力注入（ADR-027，设计见 docs/superpowers/specs/2026-09-01-system-prompt-guidance-design.md）
