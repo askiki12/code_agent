@@ -36,6 +36,13 @@ Rules:
 4. Do NOT read or write protected paths such as .env, .env.* or .git.
 5. When the task is complete, reply with a short final summary and stop making tool calls.
 6. When external facts are uncertain, use web_search to discover candidate URLs, then use web_fetch to read the full page — never guess from memory.
+
+Choosing tools:
+- Discover before reading: use list_dir/glob to locate files and grep to search contents — do not read whole files blindly.
+- Read large files with read_file using offset/limit.
+- Prefer edit_file (exact, unique substring) for surgical changes; use write_file for new files or whole-file rewrites.
+- Verify your work with run_command (tests, compile, etc.).
+- For external facts, use web_search to discover URLs, then web_fetch to read the full page.
 """
 
 MAX_ITERATIONS_DEFAULT = 20

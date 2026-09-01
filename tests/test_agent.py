@@ -1001,3 +1001,13 @@ def test_subagent_memory_disabled(workdir):
     sub_tools = set(llm.tools_calls[1])
     assert "dispatch_subagent" not in sub_tools
     assert not ({"remember", "recall", "create_skill"} & sub_tools)
+
+
+def test_prompt_base_tool_guidance(workdir):
+    llm = FakeLLM([LLMResponse(content="done", tool_calls=[])])
+    session = AgentSession(workdir=workdir, llm=llm, max_iterations=2)
+    session.run_task("hi")
+    system = llm.calls[0][0]["content"]
+    assert "Choosing tools:" in system
+    assert "Discover before reading" in system
+    assert "edit_file" in system
