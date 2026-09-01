@@ -56,7 +56,7 @@ uv run python -m code_agent --interactive
 
 - `--prompt <task>`：一次性任务。
 - `-i` / `--interactive`：交互式模式（同一会话保持上下文）。TTY 下自动进入 **Textual 全屏 TUI**；`NO_TUI=1` 或非 TTY 回退纯文本 `input()` 循环。
-- **项目记忆**：CLI 构造 `AgentSession` 时固定 `memory=True`，`--prompt` 与 `--interactive` 两种入口均开启——首任务自动注入 top-K（≤3 条）相关记忆，任务成功结束自动总结沉淀，模型可随时用 `remember`/`recall`/`create_skill` 读写记忆与沉淀技能（见 tools.md §3.11-3.13）。
+- **项目记忆**：CLI 构造 `AgentSession` 时固定 `memory=True`，`--prompt` 与 `--interactive` 两种入口均开启——首任务自动注入 top-K（≤3 条）相关记忆，任务成功结束自动总结沉淀，模型可随时用 `remember`/`recall` 读写记忆，用 `create_skill` 沉淀技能（需技能库非空，见 tools.md §3.11-3.13）。
 - TUI 行为：顶部状态栏（`Workspace: <完整路径> | model: <model> | session: <会话名>` + 运行状态 `● idle`/`● running`，未运行任务时会话名显示 `new`）、底部 StatusFooter（与快捷键同排最右侧紧凑 stats：`213.0k(21%) cache:40%`，真实 usage 优先、启发式 `~` 前缀、无缓存隐藏 cache 段，pct 相对上下文窗口 W）、中部可滚动对话区（滚轮 / PageUp / PageDown，流式增量更新，近底自动跟随、向上可回看）、右侧会话列表面板（Ctrl+L 切换，选项点击恢复会话）、底部输入栏；快捷键 Ctrl+Q（退出）/ Ctrl+N（新建会话）/ Ctrl+L（会话列表）/ Ctrl+S（技能选择弹窗，↑↓ 选择 Enter 使用 Esc 退出）/ Ctrl+R（重命名会话：输入新会话名回车确认，Esc 取消）；运行中任务在后台线程执行（UI 始终响应）；切会话（Ctrl+L 恢复 / Ctrl+N 新建）后 stats 立即刷新为该会话估算值（load 用 `estimate_tokens` 设启发式 `last_usage`、new 清空）；`!cmd` 直接执行终端命令（输入以 `!` 开头输入框切换 command-mode 变 warning 色、占位符变 `❯ shell: 输入命令（回车执行）`，用户主动命令不走权限 policy，后台线程运行、120s 超时、busy 互斥，结果回显到对话区）；skill 加载标注 `[skill] 加载 <name>… / ✓ / ✗`；子智能体运行标注 `[subagent] 子智能体运行中… / ✓ 完成`；工具行与 `[agent] stopped`/`[session ...]` 行色彩分层；权限 ask 在输入栏就地确认（y/N）。
 - `--workdir <dir>`：agent 工作目录（默认当前目录）。
 - `--model <model>` / `--base-url <url>` / `--api-key <key>`：覆盖环境变量 / `.env`。

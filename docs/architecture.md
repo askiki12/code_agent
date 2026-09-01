@@ -87,7 +87,7 @@ loop:                                             │
 - `BASE_TOOLS: list[Tool]` — 9 个 `Tool` 子类（read_file/list_dir/write_file/edit_file/run_command/glob/grep/web_fetch/web_search，固定顺序即 schema 顺序），各包装既有本地 handler。
 - `TOOL_SCHEMAS = [t.schema() for t in BASE_TOOLS]` 与顶层 `execute(name, args, workdir)` 由 `_DEFAULT_REGISTRY`（`ToolRegistry(list(BASE_TOOLS))`）派生保留，兼容旧调用方。
 - `ToolResult`：`{ok: bool, output: str, truncated: bool, exit_code?: int}` + `as_message()`。
-- 模型可见工具按条件共 10~14 个：上述 9 个 + `dispatch_subagent`（=10）；配置 skills 时另加 `use_skill`（=11）；`memory=True` 时另加 `remember`/`recall`/`create_skill`（max=14）。均为 session-bound `Tool` 子类（见 agent.py，`visible` 条件控制 schema 注入）。
+- 模型可见工具按条件共 10~14 个：上述 9 个 + `dispatch_subagent`（=10）；配置 skills 时另加 `use_skill`（=11）；`memory=True` 时另加 `remember`/`recall`，`memory=True` 且技能库非空时另加 `create_skill`（max=14）。均为 session-bound `Tool` 子类（见 agent.py，`visible` 条件控制 schema 注入）。
 - 所有输出为纯文本，便于回填给模型；超长自动截断（默认 8000 字符）；受保护路径（`.env*` 除 `.env.example`、`.git`）禁读禁写；写操作限定工作目录内。
 
 ### session.py
