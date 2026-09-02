@@ -21,28 +21,30 @@
 
 ## 2. 数据流
 
-```
-cli（用户任务）
-  │  main() 先 _load_dotenv() 再构造 AgentSession
-  │  （cli 通过 _make_store(workdir) 构造 SessionStore，AgentSession 每轮 run_task 结束自动保存会话）
-  ▼
-agent.AgentSession.run_task(task)
-  │  通过 conversation.add_user(task) 加入消息
-  │
-  ┌────────────────────────────────────────────────┐
-  ▼                                                │
-loop:                                             │
-  messages = conversation.build_messages(max_tokens)│  ← 含裁剪后的历史
-  response = llm.chat(messages, tools=TOOL_SCHEMAS) │  ← 流式，on_delta 实时展示
-  conversation.add_assistant(content, tool_calls)   │
-  if not response.tool_calls:                       │
-      final answer → 终止                          │
-  for tc in response.tool_calls:                    │
-      result = tools.execute(tc.name, tc.arguments) │  ← 本地执行
-      conversation.add_tool(tc.id, tc.name, out)    │
-  continue → next loop                             │
-  if 终止条件: 终止                                 │
-  └────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    %% 主循环数据流：cli → agent（含 LLM 往返与工具本地执行）
+    CLI["cli（用户任务）<br/>main() 先 _load_dotenv() 再构造 AgentSession（memory=True）<br/>cli 经 _make_store(workdir) 构造 SessionStore，每轮 run_task 结束自动保存会话"]
+
+    subgraph AGENT["agent.AgentSession.run_task(task)"]
+        direction TB
+        ADD["conversation.add_user(task) 加入消息"]
+        BUILD["messages = conversation.build_messages(max_tokens)<br/>← 含裁剪后的历史"]
+        CHAT["response = llm.chat(messages, tools=TOOL_SCHEMAS)<br/>← 流式，on_delta 实时展示"]
+        ASSIST["conversation.add_assistant(content, tool_calls)"]
+        DEC{"response.tool_calls<br/>非空？"}
+        FIN["final answer → 终止"]
+        EXEC["for tc in response.tool_calls:<br/>result = tools.execute(tc.name, tc.arguments)<br/>← 本地执行"]
+        TOOL["conversation.add_tool(tc.id, tc.name, out)"]
+    end
+
+    CLI -->|task| ADD
+    ADD --> BUILD --> CHAT --> ASSIST --> DEC
+    DEC -->|空| FIN
+    DEC -->|非空| EXEC
+    EXEC --> TOOL
+    TOOL -->|continue → 下一轮| BUILD
+    FIN --> DONE["终止（无 tool_calls / 达 max_iterations / 连续失败达 3 次）"]
 ```
 
 **项目记忆数据流（memory=True 时）：**
